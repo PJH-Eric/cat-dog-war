@@ -256,6 +256,15 @@
         </div>
 
         <div class="controls" id="controls">
+          <div class="itembar" id="itembar">
+            <span class="itembar-label">道具</span>
+            <div class="item-choices" id="item-choices" role="radiogroup"
+                 aria-label="這一發要搭配的道具，最多選一個"></div>
+            <button class="btn3d small itemheal" data-color="rose" id="b-heal" type="button">
+              <span class="ico">💖</span>補血
+            </button>
+          </div>
+          <div class="chargebar" id="chargebar" aria-hidden="true"><i id="chargefill"></i></div>
           <div class="ctrl-grid">
             <div class="ctrl">
               <label for="in-angle">角度</label>
@@ -277,7 +286,7 @@
               <span class="ico">🎯</span>發射！
             </button>
           </div>
-          <p class="ctrl-hint" id="ctrl-hint" role="status" aria-live="polite">在戰場上拖曳也可以瞄準；鍵盤可用左右鍵調角度、上下鍵調力道、空白鍵發射。</p>
+          <p class="ctrl-hint" id="ctrl-hint" role="status" aria-live="polite">在戰場上按住不放開始蓄力，移動滑鼠調角度，放開就發射。也可以用下面的滑桿，或鍵盤左右鍵調角度、上下鍵調力道、空白鍵發射。</p>
         </div>
       </div>
 
@@ -293,12 +302,16 @@
             <div class="sum-line"><span>可以做什麼</span><b id="sum-can">—</b></div>
             <div class="sum-line"><span>風向</span><b id="sum-wind">—</b></div>
             <div class="sum-line"><span>血量</span><b id="sum-hp">—</b></div>
+            <div class="sum-line"><span>目前出力</span><b id="sum-force">—</b></div>
             <div class="sum-line"><span>剩餘時間</span><b id="sum-timer">—</b></div>
             <div class="sum-line"><span>連線狀態</span><b id="sum-net">單機</b></div>
           </div>
 
           <h4 class="sum-h">這一局的目標</h4>
-          <p class="sum-note">輪流發射，把對方血量打到 0 就贏。爆炸會炸掉地形，中間那道圍牆也會慢慢被打穿。打滿 40 回合還沒分出勝負，血量多的一方獲勝。</p>
+          <p class="sum-note">輪流發射，把對方血量打到 0 就贏。中間隔著一道柵欄，地形和站位整局都不會改變，所以同一組角度力道永遠打到同一個點。<b>血量越低，同樣的力道飛得越近</b>，受傷後要記得加大力道。打滿 40 回合還沒分出勝負，血量多的一方獲勝。</p>
+
+          <h4 class="sum-h">道具（開局各一個，用完不補）</h4>
+          <div class="sum-items" id="sum-items">—</div>
 
           <h4 class="sum-h">房間成員</h4>
           <div class="sum-members" id="sum-members">單機對戰，沒有其他成員。</div>

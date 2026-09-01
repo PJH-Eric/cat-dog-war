@@ -19,6 +19,8 @@
 
   var state = null;
   var aim = { side: null, angle: 45, power: 60, visible: false, dragging: false };
+  /* 按住蓄力中的即時讀數；app.js 每一幀更新，畫在砲口旁邊 */
+  var charge = { on: false, angle: 45, power: 10 };
   var anim = null;              // 飛行中的動畫
   var animDone = null;          // 爆炸當下要回呼的 callback
   var animGuard = 0;            // 動畫沒跑完時的保險絲計時器
@@ -29,29 +31,42 @@
   var showTrail = true;
   var lastTrail = null;         // 上一發的完整彈道（虛線留在畫面上當參考）
 
-  /* 角色圖檔快取：把 SVG 轉成 Image 一次，之後直接 drawImage */
-  var faceCache = {};
-  function faceImage(side, mood) {
-    var key = side + ':' + mood;
-    if (faceCache[key]) return faceCache[key];
-    var inner = side === 'dog' ? UI.dogFace(mood) : UI.catFace(mood);
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' + inner + '</svg>';
+  /* 圖檔快取：把 SVG 轉成 Image 一次，之後直接 drawImage */
+  var imgCache = {};
+  function svgImage(key, svgText) {
+    if (imgCache[key]) return imgCache[key];
+    var svg = svgText.indexOf('xmlns') >= 0
+      ? svgText
+      : svgText.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
     var img = new Image();
     img.decoding = 'async';
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    faceCache[key] = img;
+    /* 圖片是非同步解碼的，載好之後要再畫一次，否則第一幀會是空的 */
+    img.onload = function () { schedule(); };
+    imgCache[key] = img;
     return img;
   }
-  var ammoCache = {};
+
+  /* 全身貓狗（含四隻腳與尾巴）。原圖一律面朝右，狗狗畫的時候再水平鏡射。 */
+  var BODY_VB_W = 120, BODY_VB_H = 100;
+  function bodyImage(side, mood) {
+    var inner = side === 'dog' ? UI.dogBody(mood) : UI.catBody(mood);
+    return svgImage('body:' + side + ':' + mood,
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + BODY_VB_W + ' ' + BODY_VB_H + '">' +
+      inner + '</svg>');
+  }
+
+  /* 彈藥：貓丟魚骨頭、狗丟狗骨頭 */
   function ammoImage(side) {
-    if (ammoCache[side]) return ammoCache[side];
-    var inner = side === 'dog' ? UI.bone() : UI.yarn();
-    var svg = inner.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
-    var img = new Image();
-    img.decoding = 'async';
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    ammoCache[side] = img;
-    return img;
+    return svgImage('ammo:' + side, side === 'dog' ? UI.bone() : UI.fishBone());
+  }
+
+  /* 場景道具：貓站在開蓋垃圾桶上，狗那一側有房子、狗屋和狗糧 */
+  function propImage(name) {
+    if (name === 'trash') return svgImage('prop:trash', UI.trashCan());
+    if (name === 'doghouse') return svgImage('prop:doghouse', UI.dogHouse());
+    if (name === 'bowl') return svgImage('prop:bowl', UI.dogBowl());
+    return svgImage('prop:house', UI.house());
   }
 
   /* --------------------------------------------------------- 座標換算 */
@@ -193,12 +208,137 @@
     ctx.stroke();
   }
 
+  /**
+   * 中央的柵欄。
+   *
+   * 這道柵欄畫在地形本來就凸起來的那一段上，佔的位置與高度就是 Rules 用來
+   * 判定碰撞的地形本身 —— 看得到的柵欄和打得到的障礙物是同一個東西，
+   * 不會出現「球穿過畫出來的柵欄」這種騙人的畫面。
+   */
+  function drawFence() {
+    if (!state) return;
+    var g = state.ground;
+    var midX = WORLD.W / 2;
+    var halfW = 26;                       // 與 makeTerrain 的圍牆寬度一致
+    var topY = 0;
+    for (var x = midX - halfW; x <= midX + halfW; x += 4) {
+      topY = Math.max(topY, Rules.groundAt(g, x));
+    }
+    /* 柵欄底部取牆兩側的地面，讓木板看起來是插在土裡的 */
+    var baseY = Math.min(Rules.groundAt(g, midX - halfW - 20), Rules.groundAt(g, midX + halfW + 20));
+    if (topY - baseY < 12) return;        // 這張圖沒有明顯的牆就不畫
+
+    var planks = 5;
+    var gap = (halfW * 2) / planks;
+    var pw = gap * 0.72;
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#4A3B55';
+    ctx.lineWidth = Math.max(1.5, 3 * scale);
+
+    /* 直立木板，頂端削成尖角 */
+    for (var i = 0; i < planks; i++) {
+      var cx = midX - halfW + gap * (i + 0.5);
+      var l = sx(cx - pw / 2), r = sx(cx + pw / 2);
+      var tip = sy(topY), sh = sy(topY - 10), bot = sy(baseY - 6);
+      ctx.beginPath();
+      ctx.moveTo(l, bot);
+      ctx.lineTo(l, sh);
+      ctx.lineTo((l + r) / 2, tip);
+      ctx.lineTo(r, sh);
+      ctx.lineTo(r, bot);
+      ctx.closePath();
+      ctx.fillStyle = i % 2 ? '#D9B383' : '#E6C79C';
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    /* 兩根橫樑 */
+    [0.34, 0.68].forEach(function (k) {
+      var yy = baseY + (topY - baseY) * k;
+      ctx.beginPath();
+      ctx.rect(sx(midX - halfW - 3), sy(yy) - 5 * scale, (halfW * 2 + 6) * scale, Math.max(4, 10 * scale));
+      ctx.fillStyle = '#C79A6B';
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  /**
+   * 兩側的場景擺設：貓的垃圾桶、狗的房子＋狗屋＋狗糧。
+   *
+   * 貓咪腳下的垃圾桶和狗狗腳下的木平台都是「真的站台」：Rules 讓兩邊的腳底
+   * 都比地面高 CONST.STAND_H，畫出來的高度就是物理用的高度，兩邊也一樣高，
+   * 不會有一邊站得比較高的優勢。
+   */
+  function drawProps() {
+    if (!state) return;
+    var g = state.ground;
+    var cat = state.fighters.cat;
+    var dog = state.fighters.dog;
+    var edge = WORLD.W - 2;
+
+    /* 狗那一側最遠處的房子，先畫當背景 */
+    drawProp(propImage('house'), Math.min(edge, dog.x + 120), dog.y, 168, 160 / 130);
+    /* 狗狗腳下的木平台，把牠墊到跟貓一樣高 */
+    drawDeck(dog.x, Rules.groundAt(g, dog.x), dog.y);
+    /* 狗屋在狗狗後面一點，站在同一個平台上 */
+    drawProp(propImage('doghouse'), Math.min(edge, dog.x + 66), dog.y, 96, 120 / 100);
+    /* 狗糧碗放在狗狗前面的平台上 */
+    drawProp(propImage('bowl'), dog.x - 52, dog.y, 30, 100 / 60);
+    /* 貓咪站的垃圾桶：桶底在地面、桶口剛好是貓的腳底，
+     * 所以高度就是 STAND_H —— 畫出來的桶子就是貓真正站的那個高度。 */
+    /* 寬高比 1.6：桶身要比貓的四隻腳張開的寬度更寬，才站得住 */
+    drawProp(propImage('trash'), cat.x, Rules.groundAt(g, cat.x), C.STAND_H, 1.6);
+  }
+
+  /** 狗狗那一側的木平台：從地面墊到腳底高度 */
+  function drawDeck(wx, groundY, topWorldY) {
+    var h = (topWorldY - groundY);
+    if (h <= 1) return;
+    var wWorld = 150;
+    ctx.save();
+    ctx.strokeStyle = '#4A3B55';
+    ctx.lineWidth = Math.max(1.5, 3 * scale);
+    ctx.fillStyle = '#D9B383';
+    ctx.beginPath();
+    ctx.rect(sx(wx - wWorld / 2), sy(topWorldY), wWorld * scale, h * scale);
+    ctx.fill();
+    ctx.stroke();
+    /* 檯面 */
+    ctx.fillStyle = '#E6C79C';
+    ctx.beginPath();
+    ctx.rect(sx(wx - wWorld / 2 - 4), sy(topWorldY) - 4 * scale, (wWorld + 8) * scale, Math.max(4, 9 * scale));
+    ctx.fill();
+    ctx.stroke();
+    /* 木板接縫 */
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    for (var i = 1; i < 5; i++) {
+      var px = sx(wx - wWorld / 2 + (wWorld / 5) * i);
+      ctx.moveTo(px, sy(topWorldY));
+      ctx.lineTo(px, sy(groundY));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawProp(img, wx, standY, hWorld, ratio) {
+    if (!img.complete || !img.naturalWidth) return;
+    var h = hWorld * scale;
+    var wpx = h * ratio;
+    ctx.drawImage(img, sx(wx) - wpx / 2, sy(standY) - h, wpx, h);
+  }
+
   function drawFighter(f, isTurn) {
-    var img = faceImage(f.side, f.mood || 'idle');
-    var SIZE_W = 74;                     // 角色在世界座標裡的高度
+    var img = bodyImage(f.side, f.mood || 'idle');
+    var SIZE_W = 78;                     // 角色在世界座標裡的高度
     var size = SIZE_W * scale;
-    var x = sx(f.x) - size / 2;
-    var y = sy(f.y + SIZE_W);            // 腳底剛好站在地面上
+    var wpx = size * (BODY_VB_W / BODY_VB_H);
+    var x = sx(f.x) - wpx / 2;
+    var y = sy(f.y + SIZE_W * 0.98);     // 圖裡的腳底在 98%，對齊站立面
 
     /* 影子 */
     ctx.save();
@@ -218,7 +358,7 @@
       ctx.ellipse(sx(f.x), sy(f.y) + 2, size * 0.46, size * 0.15, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
-      var ax = sx(f.x), ay = sy(f.y + 78);
+      var ax = sx(f.x), ay = sy(f.y + SIZE_W + 10);
       var bob = reduceMotion ? 0 : Math.sin(Date.now() / 260) * 4 * scale;
       ctx.save();
       ctx.fillStyle = '#A48FDB';
@@ -234,8 +374,19 @@
       ctx.restore();
     }
 
-    if (img.complete && img.naturalWidth) ctx.drawImage(img, x, y, size, size);
-    else {
+    if (img.complete && img.naturalWidth) {
+      /* 原圖一律面朝右。狗狗的 dir 是 -1，所以以自己的中心水平鏡射過去，
+       * 兩隻才會互相對望而不是同時看向同一邊。 */
+      if (f.dir < 0) {
+        ctx.save();
+        ctx.translate(sx(f.x), 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, -wpx / 2, y, wpx, size);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, x, y, wpx, size);
+      }
+    } else {
       ctx.fillStyle = f.side === 'cat' ? '#FFE0C2' : '#E3CBAE';
       ctx.strokeStyle = '#4A3B55';
       ctx.lineWidth = 3;
@@ -292,24 +443,85 @@
 
   function drawProjectile() {
     if (!anim) return;
-    var pts = anim.shot.points;
+    var pts = anim.sub.points;
     var idx = Math.min(pts.length - 1, Math.floor(anim.i));
     var p = pts[idx];
     if (!p) return;
     if (showTrail) drawTrail(pts.slice(0, idx + 1), 0.85);
 
-    var img = ammoImage(anim.shot.side);
-    var size = 30 * scale;
+    var side = anim.shot.side;
+    var mod = Rules.modOf(anim.shot.item);
+    /* 大骨頭的判定半徑真的比較大，畫面上就要真的比較大顆 */
+    var size = 30 * mod.scale * scale;
     var spin = reduceMotion ? 0 : anim.i * 0.22;
     ctx.save();
     ctx.translate(sx(p.x), sy(p.y));
     ctx.rotate(spin);
+
+    /* 臭彈：在彈藥外面再加一圈綠色臭氣，跟一般的一眼分得出來 */
+    if (anim.shot.item === 'stink') {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#9AD16F';
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    var img = ammoImage(side);
     if (img.complete && img.naturalWidth) ctx.drawImage(img, -size / 2, -size / 2, size, size);
     else {
-      ctx.fillStyle = anim.shot.side === 'cat' ? '#FFB8CF' : '#FFF7E8';
+      ctx.fillStyle = side === 'cat' ? '#DCEEF7' : '#FFF7E8';
       ctx.strokeStyle = '#4A3B55'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  /** 蓄力中的角度與力道，直接標在砲口旁邊，不用低頭看下面的滑桿 */
+  function drawChargeReadout() {
+    if (!charge.on || !state || !aim.side) return;
+    var f = state.fighters[aim.side];
+    var bx = sx(f.x) + f.dir * 54 * scale;
+    var by = sy(f.y + C.MUZZLE_UP + 66);
+    var text = charge.angle + '°  力道 ' + charge.power;
+    var fs = Math.max(13, 26 * scale);
+
+    ctx.save();
+    ctx.font = '900 ' + fs + 'px "Yuanti TC","Microsoft JhengHei",system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var pad = fs * 0.55;
+    var tw = ctx.measureText(text).width;
+
+    /* 白底圓角牌子，天空或土地上都看得清楚 */
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    ctx.strokeStyle = '#4A3B55';
+    ctx.lineWidth = Math.max(2, 3 * scale);
+    var bw = tw + pad * 2, bh = fs + pad;
+    var r = bh / 2;
+    ctx.beginPath();
+    ctx.moveTo(bx - bw / 2 + r, by - bh / 2);
+    ctx.arcTo(bx + bw / 2, by - bh / 2, bx + bw / 2, by + bh / 2, r);
+    ctx.arcTo(bx + bw / 2, by + bh / 2, bx - bw / 2, by + bh / 2, r);
+    ctx.arcTo(bx - bw / 2, by + bh / 2, bx - bw / 2, by - bh / 2, r);
+    ctx.arcTo(bx - bw / 2, by - bh / 2, bx + bw / 2, by - bh / 2, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#4A3B55';
+    ctx.fillText(text, bx, by);
+
+    /* 力道長條：滿了就是最大力道 */
+    var gw = bw * 0.86, gh = Math.max(4, 7 * scale);
+    var gx = bx - gw / 2, gy = by + bh / 2 + gh;
+    ctx.fillStyle = '#E9E3EE';
+    ctx.beginPath(); ctx.rect(gx, gy, gw, gh); ctx.fill(); ctx.stroke();
+    var k = (charge.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
+    ctx.fillStyle = k > 0.85 ? '#E89C8B' : (k > 0.5 ? '#E7C263' : '#79C6AC');
+    ctx.beginPath(); ctx.rect(gx, gy, Math.max(1, gw * k), gh); ctx.fill();
     ctx.restore();
   }
 
@@ -323,7 +535,7 @@
         var r = (e.r * (0.35 + k * 0.9)) * scale;
         ctx.save();
         ctx.globalAlpha = 1 - k;
-        ctx.fillStyle = '#FFE3A0';
+        ctx.fillStyle = e.tint || '#FFE3A0';
         ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), r, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = '#E88CAA';
         ctx.lineWidth = Math.max(2, 5 * scale * (1 - k));
@@ -354,13 +566,16 @@
     } else shake = 0;
 
     drawSky();
+    drawProps();
     drawTerrain();
+    drawFence();
     if (showTrail && lastTrail && !anim) drawTrail(lastTrail, 0.28);
     drawFighter(state.fighters.cat, !state.over && state.turn === 'cat');
     drawFighter(state.fighters.dog, !state.over && state.turn === 'dog');
     drawAim();
     drawProjectile();
     drawEffects();
+    drawChargeReadout();
     ctx.restore();
   }
 
@@ -371,15 +586,16 @@
     var busy = false;
 
     if (anim) {
-      var pts = anim.shot.points;
+      var pts = anim.sub.points;
       anim.i += anim.speed;
       if (anim.i >= pts.length - 1) {
-        var shot = anim.shot;
+        var cur = anim;
         anim = null;
-        onImpact(shot);
+        onImpact(cur.shot, cur.sub);
       }
       busy = true;
     }
+    if (charge.on) busy = true;
     if (effects.length || shake > 0.4) busy = true;
 
     draw();
@@ -391,23 +607,36 @@
     rafId = w.requestAnimationFrame(tick);
   }
 
-  function onImpact(shot) {
+  /** 一發（雙擊的話是其中一發）落地：爆炸圈、震動、傷害數字 */
+  function onImpact(shot, sub) {
     clearTimeout(animGuard);
     animGuard = 0;
-    lastTrail = shot.points;
-    if (shot.impact) {
-      effects.push({ type: 'boom', x: shot.impact.x, y: shot.impact.y, r: C.CRATER_R, at: Date.now(), life: 480 });
+    lastTrail = sub.points && sub.points.length ? sub.points : lastTrail;
+
+    if (sub.impact) {
+      /* 爆炸圈畫的就是這一發真正的傷害半徑：臭彈看起來大一圈，
+       * 因為它本來就打得比較廣，不是特效唬人。 */
+      var mod = Rules.modOf(shot.item);
+      effects.push({
+        type: 'boom', x: sub.impact.x, y: sub.impact.y, r: mod.blastR * 0.62,
+        at: Date.now(), life: 480, tint: shot.item === 'stink' ? '#C8E6A0' : null
+      });
       shake = shot.result === 'direct' ? 16 : (shot.result === 'miss' ? 6 : 11);
     }
+
     /* 傷害數字浮在被打到的那一隻頭上，而不是只在角落偷偷改數字 */
-    if (state) {
-      if (shot.damage.cat > 0) {
-        effects.push({ type: 'text', text: '-' + shot.damage.cat, x: state.fighters.cat.x, y: state.fighters.cat.y + 70, at: Date.now(), life: 1100, color: '#D2444F' });
-      }
-      if (shot.damage.dog > 0) {
-        effects.push({ type: 'text', text: '-' + shot.damage.dog, x: state.fighters.dog.x, y: state.fighters.dog.y + 70, at: Date.now(), life: 1100, color: '#D2444F' });
-      }
+    var dmg = sub.damage || shot.damage;
+    if (state && dmg) {
+      ['cat', 'dog'].forEach(function (s) {
+        if (!(dmg[s] > 0)) return;
+        effects.push({
+          type: 'text', text: '-' + dmg[s],
+          x: state.fighters[s].x, y: state.fighters[s].y + 70,
+          at: Date.now(), life: 1100, color: '#D2444F'
+        });
+      });
     }
+
     if (typeof animDone === 'function') {
       var cb = animDone;
       animDone = null;
@@ -417,35 +646,60 @@
   }
 
   /**
-   * 播放一發砲彈的飛行動畫。
-   * onDone 會在爆炸的當下呼叫，讓 app.js 接著套用新狀態與音效。
-   * 減少動態時直接跳到結果，不讓動畫拖慢下一步操作。
+   * 播放這一回合的飛行動畫。
+   *
+   * 一般是一發；用了雙擊就是 shot.volley 裡的兩發，會依序播放，
+   * 兩發之間留一點間隔，玩家看得出來真的丟了兩次。
+   * onDone 在最後一發爆炸時呼叫，讓 app.js 接著套用新狀態與音效。
    */
   function playShot(shot, onDone) {
     lastTrail = null;
     clearTimeout(animGuard);
 
+    var vol = (shot.volley && shot.volley.length)
+      ? shot.volley
+      : [{ points: shot.points, impact: shot.impact, damage: shot.damage }];
+
     /* 分頁在背景時瀏覽器會把 requestAnimationFrame 節流到幾乎不跑，
      * 所以背景分頁與減少動態一律直接跳到結果，不讓對局卡在動畫上。 */
     var hidden = !!(w.document && w.document.hidden);
-    if (reduceMotion || hidden || !shot.points || shot.points.length < 2) {
-      anim = null;
-      animDone = onDone || null;
-      onImpact(shot);
-      return;
-    }
-    /* 飛行動畫大約 0.5 ~ 2 秒，跟實際飛行時間有關但不會讓玩家等太久 */
-    var frames = Math.max(28, Math.min(120, shot.points.length));
-    anim = { shot: shot, i: 0, speed: shot.points.length / frames };
-    animDone = onDone || null;
-    schedule();
+    var playable = !reduceMotion && !hidden;
 
-    /* 保險絲：不管什麼原因（切到背景、瀏覽器省電、分頁被蓋住）動畫沒跑完，
-     * 4.5 秒後強制結算這一發，玩家不會永遠等不到下一步。 */
-    animGuard = setTimeout(function () {
-      if (anim && anim.shot === shot) {
+    var i = 0;
+    var step = function () {
+      var sub = vol[i];
+      var last = (i === vol.length - 1);
+      var done = function () {
+        i++;
+        if (!last) setTimeout(step, 240);          // 雙擊的第二發稍微等一下再飛
+        else if (onDone) onDone(shot);
+      };
+
+      if (!playable || !sub || !sub.points || sub.points.length < 2) {
         anim = null;
-        onImpact(shot);
+        animDone = done;
+        onImpact(shot, sub || { impact: shot.impact, damage: shot.damage, points: [] });
+        return;
+      }
+      /* 飛行動畫大約 0.5 ~ 2 秒，跟實際飛行時間有關但不會讓玩家等太久 */
+      var frames = Math.max(28, Math.min(120, sub.points.length));
+      anim = { shot: shot, sub: sub, i: 0, speed: sub.points.length / frames };
+      animDone = done;
+      schedule();
+      armGuard(shot, sub);
+    };
+    step();
+  }
+
+  /**
+   * 保險絲：不管什麼原因（切到背景、瀏覽器省電、分頁被蓋住）動畫沒跑完，
+   * 4.5 秒後強制結算這一發，玩家不會永遠等不到下一步。
+   */
+  function armGuard(shot, sub) {
+    animGuard = setTimeout(function () {
+      if (anim && anim.shot === shot && anim.sub === sub) {
+        anim = null;
+        onImpact(shot, sub);
       }
     }, 4500);
   }
@@ -477,6 +731,14 @@
     schedule();
   }
 
+  /** 更新蓄力讀數；on 為 false 就收起來 */
+  function setCharge(next) {
+    charge.on = !!(next && next.on);
+    if (next && next.angle !== undefined) charge.angle = next.angle;
+    if (next && next.power !== undefined) charge.power = next.power;
+    schedule();
+  }
+
   function setAim(next) {
     if (next.side !== undefined) aim.side = next.side;
     if (next.angle !== undefined) aim.angle = next.angle;
@@ -498,6 +760,7 @@
     resize: resize,
     setState: setState,
     setAim: setAim,
+    setCharge: setCharge,
     setMotion: setMotion,
     clearTrail: clearTrail,
     playShot: playShot,

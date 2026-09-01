@@ -9,6 +9,8 @@
  *   2. 沒有 DOM、沒有 canvas、沒有 socket；渲染層只負責把 state 畫出來。
  *   3. 座標系是「數學座標」：x 向右、y 向上，y = 0 是世界底部。
  *      畫面渲染時再自己上下翻轉，規則核心不管畫面。
+ *   4. 地形固定不變、貓狗站的位置也固定：爆炸只扣血，不會改變地圖，
+ *      所以同一組角度與力道在整局裡永遠打到同一個點。
  *
  * 世界尺寸固定 1200 × 640，跟裝置大小無關；RWD 只是換不同的縮放比例，
  * 所以手機和桌機打出來的彈道完全一樣。
@@ -28,14 +30,18 @@
     W: 1200,          // 世界寬（單位）
     H: 640,           // 世界高（單位）；砲彈可以飛出上緣，只是畫面看不到
     COLS: 160,        // 地形取樣欄數 → 每欄 7.5 單位寬
-    MIN_GROUND: 24    // 地面最低不能被炸穿到低於這個高度
+    MIN_GROUND: 24    // 地形產生時的最低高度（地形固定不變，不會被炸壞）
   };
 
   var CONST = {
     GRAVITY: 320,        // 重力加速度（單位/秒²）
     WIND_ACCEL: 4.5,     // 風力係數：水平加速度 = wind × 這個值
     WIND_MAX: 10,        // 風力絕對值上限
-    POWER_SCALE: 5.8,    // 力道 → 初速：speed = power × 這個值
+    POWER_SCALE: 5.8,    // 力道 → 初速：speed = power × 這個值 × 體力係數
+    /* 體力係數：滿血是 1.0，血量歸零時只剩這個比例。
+     * 受傷越重，同一個力道飛得越近，必須把力道調更大才打得到 —— 
+     * 這是完全由血量決定的公開資訊，兩邊與 AI 都算得出同一個值。 */
+    WEAK_MIN: 0.72,
     DT: 1 / 120,         // 模擬步長
     MAX_STEPS: 2400,     // 最長飛行 20 秒，超過就算失效
     SAMPLE_EVERY: 3,     // 每幾步取一個彈道點傳給前端做動畫
@@ -44,6 +50,11 @@
     MAX_ANGLE: 89,
     MIN_POWER: 10,
     MAX_POWER: 100,
+
+    /* 站台高度：貓咪站在開蓋的垃圾桶上、狗狗站在房子前的木平台上。
+     * 兩邊墊一樣高，所以誰都沒有居高臨下的優勢；畫面上畫的高度就是這裡，
+     * 物理與視覺不會對不起來。 */
+    STAND_H: 46,
 
     MUZZLE_FWD: 26,      // 砲口相對角色中心的前伸距離
     MUZZLE_UP: 34,       // 砲口相對角色腳底的高度
@@ -57,15 +68,104 @@
     /* 滿血 100、滿傷 20 → 至少要五發正中才會分出勝負，
      * 打歪幾次還救得回來，一局大約十幾發，節奏不會太快也不會拖。 */
     MAX_DAMAGE: 20,      // 單發最高傷害
-    CRATER_R: 56,        // 炸出來的坑半徑
 
     MAX_HP: 100,
-    MAX_TURNS: 40        // 40 回合（雙方各 20 發）還沒分出勝負就比血量
+    MAX_TURNS: 40,       // 40 回合（雙方各 20 發）還沒分出勝負就比血量
+    HEAL_AMOUNT: 30      // 補血道具一次回多少（約等於一發半的直接命中）
   };
 
   var SIDES = ['cat', 'dog'];
   var SIDE_LABEL = { cat: '貓咪', dog: '狗狗' };
   var AMMO_LABEL = { cat: '毛線球', dog: '骨頭' };
+
+  /* -------------------------------------------------------------- 道具 */
+
+  /**
+   * 四種道具。開局雙方各拿一個，用完不再補充；一回合最多只能用一個，不能疊加。
+   *
+   *   kind = 'shot'：改變這一發的物理與傷害，還是要調角度力道發射。
+   *   kind = 'heal'：不發射，按下去直接回血，然後把回合交給對手。
+   *
+   * 這裡放的是「相對於基礎值的倍率」，實際數字一律由 modOf() 算出來。
+   * 前端顯示、AI 評估與伺服器結算都讀這一份，不會有人自己寫死一組。
+   */
+  var ITEMS = {
+    double: {
+      key: 'double', label: '雙擊', icon: '✌️', kind: 'shot',
+      note: '用同一組角度與力道連丟兩發，落點一樣，傷害等於加倍。',
+      shots: 2
+    },
+    bigbone: {
+      key: 'bigbone', label: '大骨頭', icon: '🦴', kind: 'shot',
+      note: '砲彈變大一圈，比較容易擦到對手，傷害也更高。',
+      hitR: 1.55, damage: 1.5
+    },
+    stink: {
+      key: 'stink', label: '臭彈', icon: '💣', kind: 'shot',
+      note: '換成一顆臭氣炸彈，爆炸範圍大很多，沒正中也很痛。',
+      blast: 1.55, core: 1.6, damage: 1.6
+    },
+    heal: {
+      key: 'heal', label: '補血', icon: '💖', kind: 'heal',
+      note: '立刻回復 ' + CONST.HEAL_AMOUNT + ' 點血，這一回合就換對手出手。',
+      heal: CONST.HEAL_AMOUNT
+    }
+  };
+
+  /* UI 與摘要的固定顯示順序，不依賴物件鍵的列舉順序 */
+  var ITEM_ORDER = ['double', 'bigbone', 'stink', 'heal'];
+
+  /** 開局背包：雙方完全對稱，每種各一個 */
+  function startingItems() {
+    return { double: 1, bigbone: 1, stink: 1, heal: 1 };
+  }
+
+  function cloneItems(bag) {
+    var out = {};
+    for (var i = 0; i < ITEM_ORDER.length; i++) {
+      var k = ITEM_ORDER[i];
+      out[k] = Math.max(0, Math.round(Number(bag && bag[k]) || 0));
+    }
+    return out;
+  }
+
+  /** 這一邊還剩幾個道具（含補血） */
+  function itemCount(state, side) {
+    var bag = state && state.items && state.items[side];
+    var n = 0;
+    for (var i = 0; i < ITEM_ORDER.length; i++) n += (bag && bag[ITEM_ORDER[i]]) || 0;
+    return n;
+  }
+
+  function hasItem(state, side, key) {
+    return !!(key && state && state.items && state.items[side] && state.items[side][key] > 0);
+  }
+
+  /**
+   * 把道具換算成這一發實際要用的物理參數。
+   * 傳 null / '' / 未知鍵值都會拿到「沒有道具」的基礎值，所以呼叫端不用先判斷。
+   */
+  function modOf(key) {
+    var it = ITEMS[key];
+    var m = {
+      key: (it && it.kind === 'shot') ? it.key : null,
+      shots: 1,
+      hitR: CONST.HIT_R,
+      blastR: CONST.BLAST_R,
+      coreR: CONST.CORE_R,
+      maxDamage: CONST.MAX_DAMAGE,
+      scale: 1              // 畫面上砲彈的視覺放大倍率
+    };
+    if (!it || it.kind !== 'shot') return m;
+    if (it.shots) m.shots = it.shots;
+    if (it.hitR) { m.hitR = Math.round(CONST.HIT_R * it.hitR); m.scale = it.hitR; }
+    if (it.blast) { m.blastR = Math.round(CONST.BLAST_R * it.blast); m.scale = Math.max(m.scale, 1.25); }
+    if (it.core) m.coreR = Math.round(CONST.CORE_R * it.core);
+    if (it.damage) m.maxDamage = Math.round(CONST.MAX_DAMAGE * it.damage);
+    return m;
+  }
+
+  function itemLabel(key) { return ITEMS[key] ? ITEMS[key].label : ''; }
 
   function other(side) { return side === 'cat' ? 'dog' : 'cat'; }
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -110,39 +210,49 @@
       ground[i] = clamp(h, WORLD.MIN_GROUND + 20, 250);
     }
 
-    /* 中央圍牆：貓狗大戰的招牌。太低就沒有拋物線的樂趣，太高又打不過去。 */
-    var wallH = 216 + rng() * 58;
+    /* 兩側落腳平台：讓貓狗站在平坦處，第一發不會被自家腳邊的小丘擋掉。
+     * 兩邊一律壓成「同一個高度」，誰都不會因為地形抽到高地而佔便宜 ——
+     * 地形固定不變，這個公平性整局都成立。 */
+    var catCol = Math.round(colAt(WORLD.W * 0.10));
+    var dogCol = Math.round(colAt(WORLD.W * 0.90));
+    var level = (ground[clamp(catCol, 0, WORLD.COLS - 1)] + ground[clamp(dogCol, 0, WORLD.COLS - 1)]) / 2;
+    flatten(ground, catCol, 6, level);
+    flatten(ground, dogCol, 6, level);
+
+    /* 中央柵欄：貓狗大戰的招牌。高度要相對於「貓狗實際站的高度」來算，
+     * 才能保證每一張圖的柵欄都真的擋得住平射；太低就沒有拋物線的樂趣，
+     * 太高又變成怎麼打都過不去。 */
+    var standY = level + CONST.STAND_H;
+    var wallH = standY + 64 + rng() * 46;
     var wallCol = Math.round(WORLD.COLS / 2);
     var wallHalf = 3;                       // ±3 欄 ≈ 52 單位寬
     for (var w = wallCol - wallHalf; w <= wallCol + wallHalf; w++) {
       if (w >= 0 && w < WORLD.COLS) ground[w] = Math.max(ground[w], wallH);
     }
-
-    /* 兩側落腳平台：讓貓狗站在平坦處，第一發不會被自家腳邊的小丘擋掉 */
-    flatten(ground, Math.round(colAt(WORLD.W * 0.10)), 6);
-    flatten(ground, Math.round(colAt(WORLD.W * 0.90)), 6);
     return ground;
   }
 
-  function flatten(ground, centerCol, half) {
+  /** 把 centerCol 前後 half 欄壓平；不指定高度就用中心那一欄的高度 */
+  function flatten(ground, centerCol, half, height) {
     var c = clamp(centerCol, 0, ground.length - 1);
-    var h = ground[c];
+    var h = (height === undefined) ? ground[c] : height;
     for (var i = c - half; i <= c + half; i++) {
       if (i >= 0 && i < ground.length) ground[i] = h;
     }
   }
 
-  /** 在 (x, y) 炸一個半圓坑；只從上方削掉地形，不會挖出懸空的洞穴 */
-  function carve(ground, x, y, radius) {
-    for (var i = 0; i < ground.length; i++) {
-      var cx = (i + 0.5) * COL_W;
-      var dx = cx - x;
-      if (dx <= -radius || dx >= radius) continue;
-      var half = Math.sqrt(radius * radius - dx * dx);
-      var bottom = y - half;                 // 坑底
-      if (ground[i] <= bottom) continue;     // 本來就比坑底低，不用動
-      ground[i] = Math.max(WORLD.MIN_GROUND, bottom);
-    }
+  /* ------------------------------------------------------------ 體力係數 */
+
+  /**
+   * 這一邊現在的出力比例：滿血 1.0，血量歸零 WEAK_MIN，中間線性。
+   * 純粹由血量算出來，沒有亂數，所以可重現、可被 AI 正確預測。
+   */
+  function powerFactor(state, side) {
+    var f = state && state.fighters && state.fighters[side];
+    if (!f) return 1;
+    var maxHp = state.maxHp || CONST.MAX_HP;
+    var ratio = clamp((f.hp || 0) / maxHp, 0, 1);
+    return CONST.WEAK_MIN + (1 - CONST.WEAK_MIN) * ratio;
   }
 
   /* -------------------------------------------------------------- 風向 */
@@ -165,6 +275,7 @@
    * @param {string} [opts.seed]      地圖種子；同種子＝同地形同風序
    * @param {string} [opts.first]     先手 'cat' | 'dog'（預設由種子決定）
    * @param {number} [opts.hp]        初始血量
+   * @param {object} [opts.items]     開局背包；不給就雙方各拿每種道具一個
    */
   function createState(opts) {
     var o = opts || {};
@@ -182,8 +293,13 @@
       seed: seed,
       ground: ground,
       fighters: {
-        cat: { side: 'cat', x: catX, y: groundAt(ground, catX), hp: hp, dir: 1, mood: 'idle' },
-        dog: { side: 'dog', x: dogX, y: groundAt(ground, dogX), hp: hp, dir: -1, mood: 'idle' }
+        cat: { side: 'cat', x: catX, y: groundAt(ground, catX) + CONST.STAND_H, hp: hp, dir: 1, mood: 'idle' },
+        dog: { side: 'dog', x: dogX, y: groundAt(ground, dogX) + CONST.STAND_H, hp: hp, dir: -1, mood: 'idle' }
+      },
+      /* 道具背包：開局雙方對稱，用完不補 */
+      items: {
+        cat: cloneItems(o.items && o.items.cat ? o.items.cat : startingItems()),
+        dog: cloneItems(o.items && o.items.dog ? o.items.dog : startingItems())
       },
       maxHp: hp,
       turn: first,
@@ -206,6 +322,7 @@
         cat: Object.assign({}, state.fighters.cat),
         dog: Object.assign({}, state.fighters.dog)
       },
+      items: { cat: cloneItems(state.items && state.items.cat), dog: cloneItems(state.items && state.items.dog) },
       maxHp: state.maxHp,
       turn: state.turn,
       turnNo: state.turnNo,
@@ -224,7 +341,7 @@
    * 檢查一次射擊是否合法。回傳 { ok, reason }。
    * reason 是可以直接顯示給玩家看的中文說明，不是錯誤代碼。
    */
-  function legalShot(state, side, angle, power) {
+  function legalShot(state, side, angle, power, item) {
     if (!state) return { ok: false, reason: '目前沒有進行中的對局。' };
     if (state.over) return { ok: false, reason: '這一局已經結束了，請按「再來一局」。' };
     if (side !== 'cat' && side !== 'dog') return { ok: false, reason: '不是這場對局的參賽者，無法出手。' };
@@ -238,19 +355,29 @@
     if (!isFinite(p) || p < CONST.MIN_POWER || p > CONST.MAX_POWER) {
       return { ok: false, reason: '力道要在 ' + CONST.MIN_POWER + ' 到 ' + CONST.MAX_POWER + ' 之間。' };
     }
+    if (item) {
+      var it = ITEMS[item];
+      if (!it) return { ok: false, reason: '沒有這種道具。' };
+      if (it.kind !== 'shot') return { ok: false, reason: it.label + '不是用發射的，直接按下去就會生效。' };
+      if (!hasItem(state, side, item)) return { ok: false, reason: it.label + '已經用完了。' };
+    }
     return { ok: true, reason: '' };
   }
 
   /** 列出目前可以做的事，給 UI 的「合法操作」提示與 AI 的行動空間用 */
   function legalActions(state, side) {
     if (!state || state.over || state.turn !== side) return [];
-    return [{
+    var bag = (state.items && state.items[side]) || {};
+    var acts = [{
       type: 'fire',
       angle: { min: CONST.MIN_ANGLE, max: CONST.MAX_ANGLE, step: 1 },
-      power: { min: CONST.MIN_POWER, max: CONST.MAX_POWER, step: 1 }
-    }, {
-      type: 'pass'   // 回合逾時時伺服器會替玩家放棄該回合
+      power: { min: CONST.MIN_POWER, max: CONST.MAX_POWER, step: 1 },
+      /* 這一發最多搭配一個道具，不能疊加；null 代表不用道具 */
+      items: ITEM_ORDER.filter(function (k) { return ITEMS[k].kind === 'shot' && bag[k] > 0; })
     }];
+    if (bag.heal > 0) acts.push({ type: 'heal', item: 'heal', amount: CONST.HEAL_AMOUNT });
+    acts.push({ type: 'pass' });   // 回合逾時時伺服器會替玩家放棄該回合
+    return acts;
   }
 
   /* ------------------------------------------------------------ 彈道模擬 */
@@ -266,6 +393,8 @@
    * @param {object} [opts]
    * @param {number} [opts.wind]      改用指定風力試算（AI 的「風向認知」用；不會影響真實出手）
    * @param {boolean} [opts.trace]    是否收集彈道點（動畫用；AI 試算時關掉比較快）
+   * @param {string}  [opts.item]     搭配的道具鍵值（大骨頭會放大命中判定）
+   * @param {object}  [opts.mod]      已經算好的 modOf() 結果；給就直接用，省一次計算
    * @returns {{ points:Array, impact:object, flightTime:number, apex:number }}
    */
   function simulate(state, side, angle, power, opts) {
@@ -274,9 +403,10 @@
     var foe = state.fighters[other(side)];
     var dir = me.dir;
     var rad = clamp(angle, CONST.MIN_ANGLE, CONST.MAX_ANGLE) * Math.PI / 180;
-    var speed = clamp(power, CONST.MIN_POWER, CONST.MAX_POWER) * CONST.POWER_SCALE;
+    var speed = clamp(power, CONST.MIN_POWER, CONST.MAX_POWER) * CONST.POWER_SCALE * powerFactor(state, side);
     var wind = (o.wind === undefined || o.wind === null) ? state.wind : Number(o.wind);
     var trace = o.trace !== false;
+    var mod = o.mod || modOf(o.item);
 
     var x = me.x + dir * CONST.MUZZLE_FWD;
     var y = me.y + CONST.MUZZLE_UP;
@@ -298,9 +428,9 @@
       if (y > apex) apex = y;
 
       /* 直接打到對手身上 */
-      if (hits(x, y, foe)) { impact = { x: x, y: y, type: 'fighter', target: foe.side }; break; }
+      if (hits(x, y, foe, mod.hitR)) { impact = { x: x, y: y, type: 'fighter', target: foe.side }; break; }
       /* 打到自己（自爆）；剛出膛的幾步不判定 */
-      if (i > CONST.SELF_SAFE_STEPS && hits(x, y, me)) {
+      if (i > CONST.SELF_SAFE_STEPS && hits(x, y, me, mod.hitR)) {
         impact = { x: x, y: y, type: 'fighter', target: me.side }; break;
       }
       /* 飛出左右邊界 → 這發打飛了，不炸地形 */
@@ -325,21 +455,26 @@
     };
   }
 
-  function hits(x, y, fighter) {
+  function hits(x, y, fighter, hitR) {
+    var r = hitR || CONST.HIT_R;
     var dx = x - fighter.x;
     var dy = y - (fighter.y + CONST.BODY_H);
-    return dx * dx + dy * dy <= CONST.HIT_R * CONST.HIT_R;
+    return dx * dx + dy * dy <= r * r;
   }
 
-  /** 爆炸傷害：核心範圍吃滿，之後線性遞減到 0 */
-  function damageAt(impactX, impactY, fighter) {
+  /**
+   * 爆炸傷害：核心範圍吃滿，之後線性遞減到 0。
+   * 不給 mod 就是沒帶道具的基礎值，所以舊的兩參數呼叫方式仍然成立。
+   */
+  function damageAt(impactX, impactY, fighter, mod) {
+    var m = mod || modOf(null);
     var dx = impactX - fighter.x;
     var dy = impactY - (fighter.y + CONST.BODY_H);
     var d = Math.sqrt(dx * dx + dy * dy);
-    if (d >= CONST.BLAST_R) return { damage: 0, distance: round2(d) };
-    if (d <= CONST.CORE_R) return { damage: CONST.MAX_DAMAGE, distance: round2(d) };
-    var f = 1 - (d - CONST.CORE_R) / (CONST.BLAST_R - CONST.CORE_R);
-    return { damage: Math.max(1, Math.round(CONST.MAX_DAMAGE * f)), distance: round2(d) };
+    if (d >= m.blastR) return { damage: 0, distance: round2(d) };
+    if (d <= m.coreR) return { damage: m.maxDamage, distance: round2(d) };
+    var f = 1 - (d - m.coreR) / (m.blastR - m.coreR);
+    return { damage: Math.max(1, Math.round(m.maxDamage * f)), distance: round2(d) };
   }
 
   /* -------------------------------------------------------------- 出手 */
@@ -353,57 +488,78 @@
   function applyShot(state, side, action) {
     var angle = Number(action && action.angle);
     var power = Number(action && action.power);
-    var legal = legalShot(state, side, angle, power);
+    /* 認不得的道具鍵值一律當作沒帶道具，不讓它變成擋住出手的錯誤 */
+    var item = (action && action.item && ITEMS[action.item]) ? action.item : null;
+    var legal = legalShot(state, side, angle, power, item);
     if (!legal.ok) return { ok: false, reason: legal.reason };
 
     angle = Math.round(angle * 10) / 10;
     power = Math.round(power * 10) / 10;
 
-    var next = cloneState(state);
-    var sim = simulate(state, side, angle, power, { trace: true });
+    var mod = modOf(item);
     var foeSide = other(side);
-    var before = { cat: state.fighters.cat.hp, dog: state.fighters.dog.hp };
+    var next = cloneState(state);
+    if (item) next.items[side][item] = Math.max(0, next.items[side][item] - 1);
 
-    var dmg = { cat: 0, dog: 0 };
+    var total = { cat: 0, dog: 0 };
+    var volley = [];
     var nearest = null;
+    var anyDirect = false;
 
-    if (sim.impact.type === 'fighter') {
-      /* 直接命中：本人吃滿傷害，旁邊的另一位照爆炸範圍算 */
-      var direct = sim.impact.target;
-      dmg[direct] = CONST.MAX_DAMAGE;
-      var otherSide = other(direct);
-      var od = damageAt(sim.impact.x, sim.impact.y, state.fighters[otherSide]);
-      dmg[otherSide] = od.damage;
-      nearest = 0;
-      carve(next.ground, sim.impact.x, sim.impact.y, CONST.CRATER_R);
-    } else if (sim.impact.type === 'ground') {
-      var dc = damageAt(sim.impact.x, sim.impact.y, state.fighters.cat);
-      var dd = damageAt(sim.impact.x, sim.impact.y, state.fighters.dog);
-      dmg.cat = dc.damage;
-      dmg.dog = dd.damage;
-      nearest = (side === 'cat') ? dd.distance : dc.distance;
-      carve(next.ground, sim.impact.x, sim.impact.y, CONST.CRATER_R);
-    } else {
+    /* 雙擊會跑兩趟。地形不會被炸壞、貓狗也不會移動，所以第二發是完全相同的
+     * 彈道與落點 —— 效果就是這一回合的傷害直接加倍。 */
+    for (var k = 0; k < mod.shots; k++) {
+      /* 第一發就把人打趴的話，第二發不用再丟了 */
+      if (next.fighters.cat.hp <= 0 || next.fighters.dog.hp <= 0) break;
+
+      var sim = simulate(next, side, angle, power, { trace: true, mod: mod });
+      var dmg = { cat: 0, dog: 0 };
+      var dist = null;
+
+      if (sim.impact.type === 'fighter') {
+        /* 直接命中：本人吃滿傷害，旁邊的另一位照爆炸範圍算 */
+        var direct = sim.impact.target;
+        dmg[direct] = mod.maxDamage;
+        var bystander = other(direct);
+        dmg[bystander] = damageAt(sim.impact.x, sim.impact.y, next.fighters[bystander], mod).damage;
+        dist = 0;
+        if (direct === foeSide) anyDirect = true;
+      } else if (sim.impact.type === 'ground') {
+        var dc = damageAt(sim.impact.x, sim.impact.y, next.fighters.cat, mod);
+        var dd = damageAt(sim.impact.x, sim.impact.y, next.fighters.dog, mod);
+        dmg.cat = dc.damage;
+        dmg.dog = dd.damage;
+        dist = (side === 'cat') ? dd.distance : dc.distance;
+      }
       /* 飛出界或逾時：什麼都沒發生 */
-      nearest = null;
+
+      next.fighters.cat.hp = Math.max(0, next.fighters.cat.hp - dmg.cat);
+      next.fighters.dog.hp = Math.max(0, next.fighters.dog.hp - dmg.dog);
+
+      total.cat += dmg.cat;
+      total.dog += dmg.dog;
+      if (dist !== null && (nearest === null || dist < nearest)) nearest = dist;
+
+      volley.push({
+        points: sim.points,
+        impact: sim.impact,
+        damage: dmg,
+        distance: dist,
+        flightTime: sim.flightTime,
+        apex: sim.apex
+      });
     }
 
-    next.fighters.cat.hp = Math.max(0, before.cat - dmg.cat);
-    next.fighters.dog.hp = Math.max(0, before.dog - dmg.dog);
-
-    /* 地形被炸掉之後，兩隻都要重新落到新的地面上 */
-    next.fighters.cat.y = groundAt(next.ground, next.fighters.cat.x);
-    next.fighters.dog.y = groundAt(next.ground, next.fighters.dog.x);
-
-    var foeDamage = dmg[foeSide];
-    var selfDamage = dmg[side];
+    var last = volley[volley.length - 1] || { impact: null, points: [], flightTime: 0, apex: 0 };
+    var foeDamage = total[foeSide];
+    var selfDamage = total[side];
     var result;
-    if (sim.impact.type === 'fighter' && sim.impact.target === foeSide) result = 'direct';
+    if (anyDirect) result = 'direct';
     else if (foeDamage > 0 && selfDamage > 0) result = 'both';
     else if (foeDamage > 0) result = 'splash';
     else if (selfDamage > 0) result = 'self';
-    else if (sim.impact.type === 'out') result = 'out';
-    else if (sim.impact.type === 'timeout') result = 'timeout';
+    else if (last.impact && last.impact.type === 'out') result = 'out';
+    else if (last.impact && last.impact.type === 'timeout') result = 'timeout';
     else result = 'miss';
 
     next.fighters[foeSide].mood = foeDamage > 0 ? 'hurt' : 'idle';
@@ -415,18 +571,23 @@
       angle: angle,
       power: power,
       wind: state.wind,
+      item: item,
       result: result,
-      damage: { cat: dmg.cat, dog: dmg.dog },
+      damage: { cat: total.cat, dog: total.dog },
       hpAfter: { cat: next.fighters.cat.hp, dog: next.fighters.dog.hp },
       distance: nearest,
-      impact: sim.impact,
-      points: sim.points,
-      flightTime: sim.flightTime,
-      apex: sim.apex
+      /* volley 是這一回合實際飛出去的每一發：一般 1 發，雙擊 2 發。
+       * impact / points 指向最後一發，讓只認得單發的舊呼叫端仍然能用。 */
+      volley: volley,
+      impact: last.impact,
+      points: last.points,
+      flightTime: last.flightTime,
+      apex: last.apex,
+      itemsAfter: cloneItems(next.items[side])
     };
 
     next.lastShot = {
-      n: shot.n, side: shot.side, angle: shot.angle, power: shot.power,
+      n: shot.n, side: shot.side, angle: shot.angle, power: shot.power, item: item,
       result: shot.result, damage: shot.damage, distance: shot.distance, impact: shot.impact
     };
     next.version = state.version + 1;
@@ -441,19 +602,7 @@
     } else if (dogDown) {
       next.over = true; next.winner = 'cat'; next.reason = '狗狗血量歸零，貓咪獲勝！';
     } else {
-      next.turnNo = state.turnNo + 1;
-      next.turn = foeSide;
-      next.wind = windFor(state.seed, next.turnNo);
-      if (next.turnNo > CONST.MAX_TURNS) {
-        next.over = true;
-        if (next.fighters.cat.hp === next.fighters.dog.hp) {
-          next.winner = 'draw';
-          next.reason = '打滿 ' + CONST.MAX_TURNS + ' 回合，血量相同，平手！';
-        } else {
-          next.winner = next.fighters.cat.hp > next.fighters.dog.hp ? 'cat' : 'dog';
-          next.reason = '打滿 ' + CONST.MAX_TURNS + ' 回合，' + SIDE_LABEL[next.winner] + '血量比較多，獲勝！';
-        }
-      }
+      advanceTurn(next, state);
     }
 
     if (next.over) {
@@ -476,17 +625,64 @@
     var next = cloneState(state);
     var shot = {
       n: state.turnNo, side: side, angle: null, power: null, wind: state.wind,
-      result: 'pass', damage: { cat: 0, dog: 0 },
+      item: null, result: 'pass', damage: { cat: 0, dog: 0 },
       hpAfter: { cat: next.fighters.cat.hp, dog: next.fighters.dog.hp },
-      distance: null, impact: null, points: [], flightTime: 0, apex: 0,
+      distance: null, impact: null, points: [], volley: [], flightTime: 0, apex: 0,
       note: reason || '時間到，這一回合跳過。'
     };
-    next.lastShot = { n: shot.n, side: side, angle: null, power: null, result: 'pass', damage: shot.damage, distance: null, impact: null };
+    next.lastShot = { n: shot.n, side: side, angle: null, power: null, item: null, result: 'pass', damage: shot.damage, distance: null, impact: null };
     next.version = state.version + 1;
-    next.turnNo = state.turnNo + 1;
-    next.turn = other(side);
-    next.wind = windFor(state.seed, next.turnNo);
+    advanceTurn(next, state);
+    return { ok: true, state: next, shot: shot };
+  }
 
+  /**
+   * 使用補血道具。不發射砲彈：回血之後這一回合就直接交給對手。
+   * 回傳形狀跟 applyShot 一樣，摘要、版本號與動畫層才不用另外開一條分支。
+   */
+  function applyHeal(state, side) {
+    if (!state) return { ok: false, reason: '目前沒有進行中的對局。' };
+    if (state.over) return { ok: false, reason: '這一局已經結束了，請按「再來一局」。' };
+    if (side !== 'cat' && side !== 'dog') return { ok: false, reason: '不是這場對局的參賽者，無法使用道具。' };
+    if (state.turn !== side) {
+      return { ok: false, reason: '現在輪到' + SIDE_LABEL[state.turn] + '，等對手出手後才能用補血。' };
+    }
+    if (!hasItem(state, side, 'heal')) return { ok: false, reason: '補血已經用完了。' };
+
+    var next = cloneState(state);
+    next.items[side].heal -= 1;
+
+    var before = next.fighters[side].hp;
+    var healed = Math.min(state.maxHp, before + CONST.HEAL_AMOUNT);
+    var gain = healed - before;
+    next.fighters[side].hp = healed;
+    next.fighters[side].mood = gain > 0 ? 'happy' : 'idle';
+    next.fighters[other(side)].mood = 'idle';
+
+    var shot = {
+      n: state.turnNo, side: side, angle: null, power: null, wind: state.wind,
+      item: 'heal', result: 'heal',
+      damage: { cat: 0, dog: 0 },
+      heal: gain,
+      hpAfter: { cat: next.fighters.cat.hp, dog: next.fighters.dog.hp },
+      distance: null, impact: null, points: [], volley: [], flightTime: 0, apex: 0,
+      itemsAfter: cloneItems(next.items[side]),
+      note: gain > 0 ? ('回復了 ' + gain + ' 點血。') : '血量本來就是滿的，只用掉了道具。'
+    };
+    next.lastShot = {
+      n: shot.n, side: side, angle: null, power: null, item: 'heal',
+      result: 'heal', damage: shot.damage, distance: null, impact: null
+    };
+    next.version = state.version + 1;
+    advanceTurn(next, state);
+    return { ok: true, state: next, shot: shot };
+  }
+
+  /** 換手：回合數 +1、換邊、重抽風，並處理回合上限的收尾判定 */
+  function advanceTurn(next, state) {
+    next.turnNo = state.turnNo + 1;
+    next.turn = other(state.turn);
+    next.wind = windFor(state.seed, next.turnNo);
     if (next.turnNo > CONST.MAX_TURNS) {
       next.over = true;
       if (next.fighters.cat.hp === next.fighters.dog.hp) {
@@ -497,7 +693,7 @@
         next.reason = '打滿 ' + CONST.MAX_TURNS + ' 回合，' + SIDE_LABEL[next.winner] + '血量比較多，獲勝！';
       }
     }
-    return { ok: true, state: next, shot: shot };
+    return next;
   }
 
   /* ------------------------------------------------------- 序列化與投影 */
@@ -516,6 +712,7 @@
         cat: publicFighter(state.fighters.cat),
         dog: publicFighter(state.fighters.dog)
       },
+      items: { cat: cloneItems(state.items && state.items.cat), dog: cloneItems(state.items && state.items.dog) },
       maxHp: state.maxHp,
       turn: state.turn,
       turnNo: state.turnNo,
@@ -542,6 +739,7 @@
         cat: Object.assign({}, pub.fighters.cat),
         dog: Object.assign({}, pub.fighters.dog)
       },
+      items: { cat: cloneItems(pub.items && pub.items.cat), dog: cloneItems(pub.items && pub.items.dog) },
       maxHp: pub.maxHp,
       turn: pub.turn,
       turnNo: pub.turnNo,
@@ -561,10 +759,11 @@
     splash: '爆炸波及對手',
     self: '打到自己了…',
     both: '兩邊都被炸到',
-    miss: '沒打中，只炸出一個坑',
+    miss: '沒打中',
     out: '飛出畫面外了',
     timeout: '砲彈不知道飛去哪了',
-    pass: '這回合跳過'
+    pass: '這回合跳過',
+    heal: '補了一口血'
   };
 
   /** 把一發的結果轉成一行中文摘要，前端與伺服器共用同一種說法 */
@@ -572,10 +771,16 @@
     if (!shot) return '';
     var who = SIDE_LABEL[shot.side];
     if (shot.result === 'pass') return '第 ' + shot.n + ' 回合 ' + who + '：' + (shot.note || RESULT_TEXT.pass);
+    if (shot.result === 'heal') {
+      return '第 ' + shot.n + ' 回合 ' + who + '：用了 ' + ITEMS.heal.icon + ' 補血 → ' +
+        (shot.note || RESULT_TEXT.heal) + '（血量 ' + shot.hpAfter[shot.side] + '）';
+    }
     var foe = other(shot.side);
+    var used = ITEMS[shot.item] ? ('、道具 ' + ITEMS[shot.item].icon + ' ' + ITEMS[shot.item].label) : '';
     var head = '第 ' + shot.n + ' 回合 ' + who + '：角度 ' + shot.angle + '°、力道 ' + shot.power +
-      '、風 ' + describeWind(shot.wind);
+      '、風 ' + describeWind(shot.wind) + used;
     var tail = RESULT_TEXT[shot.result] || '';
+    if (shot.item === 'double' && shot.volley && shot.volley.length > 1) tail = '連丟兩發，' + tail;
     var dmg = shot.damage[foe];
     if (dmg > 0) tail += '，對' + SIDE_LABEL[foe] + '造成 ' + dmg + ' 點傷害';
     if (shot.damage[shot.side] > 0) tail += '，自己也受了 ' + shot.damage[shot.side] + ' 點傷';
@@ -600,14 +805,16 @@
     SIDE_LABEL: SIDE_LABEL,
     AMMO_LABEL: AMMO_LABEL,
     RESULT_TEXT: RESULT_TEXT,
+    ITEMS: ITEMS,
+    ITEM_ORDER: ITEM_ORDER,
 
     other: other,
     clamp: clamp,
     colAt: colAt,
     groundAt: groundAt,
     makeTerrain: makeTerrain,
-    carve: carve,
     windFor: windFor,
+    powerFactor: powerFactor,
 
     createState: createState,
     cloneState: cloneState,
@@ -617,6 +824,14 @@
     damageAt: damageAt,
     applyShot: applyShot,
     applyPass: applyPass,
+    applyHeal: applyHeal,
+
+    startingItems: startingItems,
+    cloneItems: cloneItems,
+    itemCount: itemCount,
+    hasItem: hasItem,
+    modOf: modOf,
+    itemLabel: itemLabel,
 
     toPublic: toPublic,
     fromPublic: fromPublic,

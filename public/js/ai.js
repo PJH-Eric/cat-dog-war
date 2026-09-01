@@ -11,6 +11,9 @@
  *   2. 風向認知：簡單當作沒有風，普通只補償約六成，困難完整補償。
  *      這是「模型比較差」，不是作弊 —— 風力是雙方都看得到的公開資訊。
  *   3. 瞄準誤差：出手前再加一個隨機抖動，簡單抖很大、困難幾乎不抖。
+ *   4. 道具運用：簡單完全不會用，普通只在「這發本來就會打中」時順手加一個，
+ *      困難會用真實物理把每個道具都試算一遍，挑期望傷害最高的。
+ *      三者拿到的道具數量完全一樣，差別只在會不會用。
  *
  * 所有隨機都吃外部注入的 rng，所以固定種子的情境可以重現、可以測試。
  */
@@ -37,6 +40,8 @@
       search: 'formula',
       angleJitter: 9,       // 出手前的角度抖動（度，± 範圍）
       powerJitter: 12,      // 力道抖動
+      items: 'never',       // 道具策略：完全不用
+      healAt: 0,            // 血量低於多少就考慮補血；0 = 不補
       thinkMs: 700
     },
     normal: {
@@ -47,6 +52,8 @@
       search: 'coarse',
       angleJitter: 4,
       powerJitter: 5,
+      items: 'simple',      // 這一發本來就會命中時才加道具
+      healAt: 30,
       thinkMs: 1000
     },
     hard: {
@@ -57,6 +64,8 @@
       search: 'fine',
       angleJitter: 1.5,
       powerJitter: 2,
+      items: 'best',        // 每個道具都試算，挑期望傷害最高的
+      healAt: 40,
       thinkMs: 1300
     }
   };
@@ -155,21 +164,103 @@
     return out;
   }
 
-  /* ------------------------------------------------------------- 對外 */
+  /* --------------------------------------------------------- 道具運用 */
 
   /**
-   * 選一發要打的角度與力道。
+   * 這一發預期造成多少傷害。用的是跟實際出手完全相同的物理，只是關掉彈道收集。
+   * AI 在這裡沒有比玩家多知道任何事 —— 血量、風向、道具數量都是雙方看得到的。
+   */
+  function estimate(state, side, angle, power, item, wind) {
+    var mod = Rules.modOf(item);
+    var foe = Rules.other(side);
+    var sim = Rules.simulate(state, side, angle, power, { wind: wind, trace: false, mod: mod });
+    var imp = sim.impact;
+    if (imp.type === 'out' || imp.type === 'timeout') return { foe: 0, self: 0 };
+    var dFoe = (imp.type === 'fighter' && imp.target === foe)
+      ? mod.maxDamage
+      : Rules.damageAt(imp.x, imp.y, state.fighters[foe], mod).damage;
+    var dSelf = (imp.type === 'fighter' && imp.target === side)
+      ? mod.maxDamage
+      : Rules.damageAt(imp.x, imp.y, state.fighters[side], mod).damage;
+    /* 雙擊是同一條彈道丟兩次，所以傷害直接乘上發數 */
+    return { foe: dFoe * mod.shots, self: dSelf * mod.shots };
+  }
+
+  /** 這一邊現在還能搭配發射的道具（不含補血） */
+  function shotItems(state, side) {
+    return Rules.ITEM_ORDER.filter(function (k) {
+      return Rules.ITEMS[k].kind === 'shot' && Rules.hasItem(state, side, k);
+    });
+  }
+
+  /**
+   * 要不要用道具、用哪一個。三段難度的差別在這裡是看得見的：
+   *   never   完全不用，道具會一路留到輸為止
+   *   simple  只有「這發本來就打得中」時才順手加一個，挑清單裡第一個
+   *   best    每個道具都用真實物理試算一遍，挑淨傷害最高的
+   */
+  function pickItem(state, side, angle, power, wind, lv) {
+    var avail = shotItems(state, side);
+    if (!avail.length || lv.items === 'never') return null;
+
+    var basic = estimate(state, side, angle, power, null, wind);
+    /* 本來就會命中才值得花道具，不然很容易白白浪費掉 */
+    if (lv.items === 'simple') return basic.foe > 0 ? avail[0] : null;
+
+    var bestKey = null;
+    var bestNet = basic.foe - basic.self * 1.5;
+    for (var i = 0; i < avail.length; i++) {
+      var e = estimate(state, side, angle, power, avail[i], wind);
+      var net = e.foe - e.self * 1.5;
+      if (net > bestNet + 0.5) { bestNet = net; bestKey = avail[i]; }
+    }
+    return bestKey;
+  }
+
+  /**
+   * 該不該補血。補血會把這一回合直接讓給對手，所以只在真的撐不住時才用：
+   * 血量低於門檻、還有補血可用、而且補了確實有效（沒滿血）。
+   * 對手也只剩一口氣時寧可拼這一發，不把回合讓出去。
+   */
+  function shouldHeal(state, side, lv) {
+    if (!lv.healAt || !Rules.hasItem(state, side, 'heal')) return false;
+    var me = state.fighters[side];
+    var foe = state.fighters[Rules.other(side)];
+    if (me.hp > lv.healAt || me.hp >= state.maxHp) return false;
+    if (foe.hp <= C.MAX_DAMAGE) return false;
+    return true;
+  }
+
+  /* ------------------------------------------------------------- 對外 */
+
+  function nowMs() {
+    return (typeof performance === 'object' && performance.now) ? performance.now() : Date.now();
+  }
+
+  /**
+   * 選這一回合要做什麼：發射（可搭配一個道具）或是補血。
    *
    * @param {object} state  Rules 的對局狀態
    * @param {'cat'|'dog'} side  AI 控制哪一邊
    * @param {string} levelName  'easy' | 'normal' | 'hard'
    * @param {function} [rng]    可注入亂數；不給就用 Math.random
-   * @returns {{ angle:number, power:number, level:string, sims:number, thinkMs:number, elapsedMs:number }}
+   * @param {object} [opts]
+   * @param {boolean} [opts.noHeal]  不考慮補血，一定回傳發射動作
+   * @returns {{ type:'fire'|'heal', angle?:number, power?:number, item:?string,
+   *            level:string, sims:number, thinkMs:number, elapsedMs:number }}
    */
-  function chooseShot(state, side, levelName, rng) {
+  function chooseAction(state, side, levelName, rng, opts) {
     var lv = levelOf(levelName);
     var next = rng || Math.random;
-    var t0 = (typeof performance === 'object' && performance.now) ? performance.now() : Date.now();
+    var o = opts || {};
+    var t0 = nowMs();
+
+    if (!o.noHeal && shouldHeal(state, side, lv)) {
+      return {
+        type: 'heal', item: 'heal', angle: null, power: null,
+        level: lv.key, sims: 0, thinkMs: lv.thinkMs, elapsedMs: Math.round(nowMs() - t0)
+      };
+    }
 
     /* AI 心裡「以為」的風：這是它的模型限制，不是偷看到的額外資訊 */
     var believedWind = Rules.clamp(state.wind * lv.windBelief, -C.WIND_MAX, C.WIND_MAX);
@@ -186,24 +277,34 @@
     angle = Math.round(angle * 10) / 10;
     power = Math.round(power * 10) / 10;
 
-    var t1 = (typeof performance === 'object' && performance.now) ? performance.now() : Date.now();
     var out = {
+      type: 'fire',
       angle: angle,
       power: power,
+      item: pickItem(state, side, angle, power, believedWind, lv),
       level: lv.key,
       sims: plan.sims,
       thinkMs: lv.thinkMs,
-      elapsedMs: Math.round(t1 - t0)
+      elapsedMs: Math.round(nowMs() - t0)
     };
 
     /* 保險：萬一有數值意外，退回一組一定合法的值，AI 絕不送非法行動 */
-    var legal = Rules.legalShot(state, side, out.angle, out.power);
+    var legal = Rules.legalShot(state, side, out.angle, out.power, out.item);
     if (!legal.ok) {
       out.angle = 45;
       out.power = 60;
+      out.item = null;
       out.fallback = legal.reason;
     }
     return out;
+  }
+
+  /**
+   * 只選發射動作，永遠不會回補血。
+   * 測量瞄準準度的測試用這個，才不會被補血決策打斷。
+   */
+  function chooseShot(state, side, levelName, rng) {
+    return chooseAction(state, side, levelName, rng, { noHeal: true });
   }
 
   /** AI 這一發最後落在哪裡（測試與難度比較用；不參與實際出手） */
@@ -224,7 +325,12 @@
   return {
     LEVELS: LEVELS,
     levelOf: levelOf,
+    chooseAction: chooseAction,
     chooseShot: chooseShot,
+    estimate: estimate,
+    shotItems: shotItems,
+    pickItem: pickItem,
+    shouldHeal: shouldHeal,
     previewShot: previewShot,
     missDistance: missDistance,
     powerForRange: powerForRange

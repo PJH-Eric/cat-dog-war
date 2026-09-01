@@ -249,6 +249,182 @@
     host.innerHTML = html;
   }
 
+  /* ================= 全身貓狗（側面，含四隻腳與尾巴） =================
+   *
+   * 一律畫成「面朝右」，viewBox 120 × 100，腳底剛好落在 y = 98。
+   * 狗狗在戰場上是面朝左的，由 render.js 水平鏡射，這裡不另外畫一份。
+   */
+
+  /** 側面站姿的貓：四隻腳、翹起來的長尾巴、三角耳 */
+  function catBody(mood) {
+    var c = SIDE_COLOR.cat;
+    var m = mood || 'idle';
+    /* 尾巴受傷時垂下來、開心時翹更高，是看得出情緒的第二個線索 */
+    var tail = (m === 'hurt' || m === 'lose')
+      ? 'M30 68 q-16 6 -20 20'
+      : 'M30 62 q-20 -4 -18 -24 q1 -10 9 -12';
+    return '<g>' +
+      '<path d="' + tail + '" fill="none" stroke="' + INK + '" stroke-width="13" stroke-linecap="round"/>' +
+      '<path d="' + tail + '" fill="none" stroke="' + c.dark + '" stroke-width="7" stroke-linecap="round"/>' +
+
+      /* 遠側的兩隻腳先畫，顏色深一點，才有前後層次 */
+      '<rect x="38" y="70" width="11" height="28" rx="5.5" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4"/>' +
+      '<rect x="72" y="70" width="11" height="28" rx="5.5" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4"/>' +
+
+      /* 身體 */
+      '<ellipse cx="56" cy="60" rx="33" ry="21" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
+
+      /* 近側的兩隻腳壓在身體上 */
+      '<rect x="30" y="70" width="12" height="28" rx="6" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4"/>' +
+      '<rect x="64" y="70" width="12" height="28" rx="6" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4"/>' +
+      /* 腳掌肉球 */
+      '<ellipse cx="36" cy="96" rx="7" ry="3.5" fill="' + c.accent + '"/>' +
+      '<ellipse cx="70" cy="96" rx="7" ry="3.5" fill="' + c.accent + '"/>' +
+
+      /* 虎斑紋 */
+      '<path d="M44 44 q6 6 0 12 M56 42 q6 7 0 14 M68 44 q6 6 0 12" fill="none" stroke="' + c.dark + '" stroke-width="4" stroke-linecap="round" opacity="0.75"/>' +
+
+      /* 耳朵 */
+      '<path d="M78 28 L74 8 L92 20 Z" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4.5" stroke-linejoin="round"/>' +
+      '<path d="M100 26 L106 8 L110 26 Z" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4.5" stroke-linejoin="round"/>' +
+
+      /* 頭 */
+      '<circle cx="93" cy="35" r="19" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 側面只看得到一隻眼睛，所以兩個座標給同一點 */
+      eyes(m, 97, 32, 97, 32) +
+      '<ellipse cx="88" cy="44" rx="8" ry="5" fill="' + c.accent + '" opacity="0.85"/>' +
+      '<path d="M106 38 L110 42 L106 46" fill="none" stroke="' + INK + '" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      mouth(m, 103, 46) +
+      '<path d="M104 34 h14 M104 40 h14" stroke="' + INK + '" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>' +
+      '</g>';
+  }
+
+  /** 側面站姿的狗：四隻腳、垂耳、項圈，尾巴會依情緒改變角度 */
+  function dogBody(mood) {
+    var c = SIDE_COLOR.dog;
+    var m = mood || 'idle';
+    var tail = (m === 'hurt' || m === 'lose')
+      ? 'M28 70 q-14 8 -16 18'
+      : 'M28 60 q-16 -10 -10 -26';
+    return '<g>' +
+      '<path d="' + tail + '" fill="none" stroke="' + INK + '" stroke-width="14" stroke-linecap="round"/>' +
+      '<path d="' + tail + '" fill="none" stroke="' + c.dark + '" stroke-width="8" stroke-linecap="round"/>' +
+
+      '<rect x="38" y="70" width="12" height="28" rx="6" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4"/>' +
+      '<rect x="72" y="70" width="12" height="28" rx="6" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4"/>' +
+
+      '<ellipse cx="56" cy="60" rx="34" ry="22" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
+
+      '<rect x="29" y="70" width="13" height="28" rx="6.5" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4"/>' +
+      '<rect x="63" y="70" width="13" height="28" rx="6.5" fill="' + c.body + '" stroke="' + INK + '" stroke-width="4"/>' +
+      '<ellipse cx="35" cy="96" rx="7.5" ry="3.5" fill="' + c.dark + '"/>' +
+      '<ellipse cx="69" cy="96" rx="7.5" ry="3.5" fill="' + c.dark + '"/>' +
+
+      /* 肚子的淺色斑塊 */
+      '<ellipse cx="60" cy="68" rx="20" ry="9" fill="#FFF3E4" opacity="0.75"/>' +
+
+      /* 頭 */
+      '<circle cx="92" cy="36" r="19" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 垂下來的耳朵蓋住頭側 */
+      '<ellipse cx="84" cy="34" rx="10" ry="20" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4.5"/>' +
+      eyes(m, 96, 32, 96, 32) +
+      /* 往前突出的鼻吻 */
+      '<ellipse cx="109" cy="44" rx="12" ry="9" fill="#FFF3E4" stroke="' + INK + '" stroke-width="4"/>' +
+      '<ellipse cx="116" cy="41" rx="5" ry="4" fill="' + INK + '"/>' +
+      mouth(m, 109, 49) +
+      /* 項圈 */
+      '<path d="M76 50 q10 10 20 8" fill="none" stroke="' + c.accent + '" stroke-width="7" stroke-linecap="round"/>' +
+      '<circle cx="88" cy="59" r="4.5" fill="#E7C263" stroke="' + INK + '" stroke-width="3"/>' +
+      '</g>';
+  }
+
+  /* ===================== 彈藥：貓丟魚骨頭、狗丟狗骨頭 ===================== */
+
+  /** 魚骨頭：貓咪的彈藥 */
+  function fishBone() {
+    return '<svg viewBox="0 0 100 100" role="img" aria-label="魚骨頭">' +
+      '<g transform="rotate(-18 50 50)">' +
+      /* 魚頭 */
+      '<path d="M18 50 q10 -16 24 0 q-14 16 -24 0 Z" fill="#DCEEF7" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '<circle cx="26" cy="47" r="3.5" fill="' + INK + '"/>' +
+      /* 脊椎 */
+      '<path d="M40 50 H80" stroke="' + INK + '" stroke-width="7" stroke-linecap="round"/>' +
+      /* 肋骨 */
+      '<path d="M48 50 l-6 -13 M48 50 l-6 13 M58 50 l-6 -14 M58 50 l-6 14 M68 50 l-6 -13 M68 50 l-6 13" stroke="' + INK + '" stroke-width="5" stroke-linecap="round"/>' +
+      /* 尾鰭 */
+      '<path d="M80 50 l14 -13 v26 Z" fill="#DCEEF7" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '</g></svg>';
+  }
+
+  /* ======================= 場景：垃圾桶、狗屋、狗糧 ======================= */
+
+  /** 開著蓋子的垃圾桶，貓咪站在上面 */
+  function trashCan() {
+    return '<svg viewBox="0 0 100 100" role="img" aria-label="垃圾桶">' +
+      /* 掀開的蓋子靠在後面 */
+      '<g transform="rotate(-24 20 34)">' +
+      '<rect x="2" y="24" width="42" height="12" rx="6" fill="#B9C6CF" stroke="' + INK + '" stroke-width="5"/>' +
+      '<rect x="17" y="16" width="12" height="10" rx="4" fill="#B9C6CF" stroke="' + INK + '" stroke-width="4"/>' +
+      '</g>' +
+      /* 桶身：上寬下窄 */
+      '<path d="M26 40 H86 L80 96 H32 Z" fill="#CBD8E0" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '<rect x="22" y="34" width="68" height="12" rx="6" fill="#B9C6CF" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 直紋 */
+      '<path d="M42 48 V92 M56 48 V92 M70 48 V92" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" opacity="0.35"/>' +
+      /* 冒出來的垃圾 */
+      '<circle cx="40" cy="34" r="7" fill="#E7C263" stroke="' + INK + '" stroke-width="4"/>' +
+      '<path d="M62 34 l8 -10 l6 10 Z" fill="#A9E7D2" stroke="' + INK + '" stroke-width="4" stroke-linejoin="round"/>' +
+      '</svg>';
+  }
+
+  /** 狗屋 */
+  function dogHouse() {
+    return '<svg viewBox="0 0 120 100" role="img" aria-label="狗屋">' +
+      '<path d="M60 6 L112 44 H8 Z" fill="#E89C8B" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '<rect x="18" y="42" width="84" height="54" rx="6" fill="#FFC2B4" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 拱形門口 */
+      '<path d="M42 96 V68 q18 -20 36 0 v28 Z" fill="#6B4E63" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      /* 木紋 */
+      '<path d="M26 54 H36 M26 68 H36 M26 82 H36 M84 54 H94 M84 68 H94 M84 82 H94" stroke="' + INK + '" stroke-width="3" stroke-linecap="round" opacity="0.3"/>' +
+      /* 門口上方的名牌 */
+      '<rect x="46" y="46" width="28" height="12" rx="5" fill="#FFE3A0" stroke="' + INK + '" stroke-width="4"/>' +
+      '</svg>';
+  }
+
+  /** 狗糧碗：碗裡和地上都有幾顆飼料 */
+  function dogBowl() {
+    return '<svg viewBox="0 0 100 60" role="img" aria-label="狗糧">' +
+      /* 掉在地上的幾顆 */
+      '<circle cx="10" cy="52" r="5" fill="#C2884F" stroke="' + INK + '" stroke-width="3"/>' +
+      '<circle cx="22" cy="55" r="4" fill="#A9713F" stroke="' + INK + '" stroke-width="3"/>' +
+      '<circle cx="90" cy="54" r="4.5" fill="#C2884F" stroke="' + INK + '" stroke-width="3"/>' +
+      /* 碗 */
+      '<path d="M30 26 H82 L76 54 H36 Z" fill="#AED9F5" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '<ellipse cx="56" cy="26" rx="26" ry="8" fill="#7FB4DA" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 碗裡的飼料 */
+      '<circle cx="46" cy="24" r="5.5" fill="#C2884F" stroke="' + INK + '" stroke-width="3"/>' +
+      '<circle cx="58" cy="21" r="5.5" fill="#A9713F" stroke="' + INK + '" stroke-width="3"/>' +
+      '<circle cx="68" cy="25" r="5" fill="#C2884F" stroke="' + INK + '" stroke-width="3"/>' +
+      '</svg>';
+  }
+
+  /** 狗狗那一側背景的房子 */
+  function house() {
+    return '<svg viewBox="0 0 160 130" role="img" aria-label="房子">' +
+      '<path d="M80 6 L154 58 H6 Z" fill="#E88CAA" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
+      '<rect x="20" y="56" width="120" height="72" rx="6" fill="#FFF0DE" stroke="' + INK + '" stroke-width="5"/>' +
+      /* 門 */
+      '<rect x="66" y="86" width="30" height="42" rx="5" fill="#C2A17C" stroke="' + INK + '" stroke-width="5"/>' +
+      '<circle cx="89" cy="108" r="3.5" fill="' + INK + '"/>' +
+      /* 兩扇窗 */
+      '<rect x="32" y="70" width="26" height="26" rx="5" fill="#AED9F5" stroke="' + INK + '" stroke-width="5"/>' +
+      '<rect x="104" y="70" width="26" height="26" rx="5" fill="#AED9F5" stroke="' + INK + '" stroke-width="5"/>' +
+      '<path d="M45 70 V96 M32 83 H58 M117 70 V96 M104 83 H130" stroke="' + INK + '" stroke-width="3"/>' +
+      /* 煙囪 */
+      '<rect x="110" y="18" width="18" height="26" rx="4" fill="#C2A17C" stroke="' + INK + '" stroke-width="5"/>' +
+      '</svg>';
+  }
+
   w.UI = {
     INK: INK,
     PALETTE: PALETTE,
@@ -256,7 +432,9 @@
     decorate: decorate, decorateAll: decorateAll, paint: paint, repaintAll: repaintAll,
     setLabel: setLabel, setColor: setColor,
     catFace: catFace, dogFace: dogFace, avatar: avatar,
-    yarn: yarn, bone: bone,
+    catBody: catBody, dogBody: dogBody,
+    yarn: yarn, bone: bone, fishBone: fishBone,
+    trashCan: trashCan, dogHouse: dogHouse, dogBowl: dogBowl, house: house,
     logo: logo, trophy: trophy, windArrow: windArrow, bgDeco: bgDeco
   };
 }(window));

@@ -270,7 +270,105 @@ async function main() {
     check('非法角度會被伺服器擋下',
       !!turnClient0.lastError() && /角度/.test(turnClient0.lastError().message));
 
+    /* ---- 5b. 道具與補血（伺服器權威） ---- */
+    {
+      const turnSide = host.view.game.turn;
+      const turnCli = turnSide === 'cat' ? host : guest;
+      const idleCli = turnSide === 'cat' ? guest : host;
+
+      check('開局雙方的背包在同步裡都是每種各一個',
+        Rules.ITEM_ORDER.every((k) => host.view.game.items.cat[k] === 1 && host.view.game.items.dog[k] === 1),
+        JSON.stringify(host.view.game.items));
+      check('觀戰者也看得到雙方的道具數量',
+        !!watcher.view.game.items && watcher.view.game.items.cat.stink === 1);
+
+      /* 不是自己的回合就不能補血 */
+      idleCli.errors.length = 0;
+      idleCli.send('room:heal', {});
+      await sleep(220);
+      check('不是自己的回合不能用補血',
+        !!idleCli.lastError() && /回合|輪到/.test(idleCli.lastError().message),
+        idleCli.lastError() && idleCli.lastError().message);
+
+      /* 觀戰者不能用補血 */
+      watcher.errors.length = 0;
+      watcher.send('room:heal', {});
+      await sleep(220);
+      check('觀戰者不能使用道具',
+        !!watcher.lastError() && /觀戰/.test(watcher.lastError().message),
+        watcher.lastError() && watcher.lastError().message);
+
+      /* 帶臭彈射一發：伺服器要扣掉道具，三方都看得到 */
+      let v0 = host.view.game.version;
+      turnCli.send('room:fire', { angle: 50, power: 70, item: 'stink' });
+      await host.until((v) => v.game.version > v0, '帶臭彈的一發生效', 10000);
+      check('用掉的臭彈在伺服器狀態裡被扣掉',
+        host.view.game.items[turnSide].stink === 0,
+        JSON.stringify(host.view.game.items[turnSide]));
+      check('三方看到的背包一致',
+        JSON.stringify(host.view.game.items) === JSON.stringify(guest.view.game.items) &&
+        JSON.stringify(guest.view.game.items) === JSON.stringify(watcher.view.game.items));
+      check('摘要記錄了這一發用的道具',
+        host.view.room.summary[host.view.room.summary.length - 1].item === 'stink');
+
+      /* 已經用完的臭彈不能再用 */
+      const nextSide = host.view.game.turn;
+      const nextCli = nextSide === turnSide ? turnCli : (nextSide === 'cat' ? host : guest);
+      if (nextSide !== turnSide) {
+        /* 換手了：先讓對手打一發平凡的，把回合還回來 */
+        v0 = host.view.game.version;
+        nextCli.send('room:fire', { angle: 45, power: 60 });
+        await host.until((v) => v.game.version > v0, '對手回擊', 10000);
+      }
+      turnCli.errors.length = 0;
+      turnCli.send('room:fire', { angle: 50, power: 70, item: 'stink' });
+      await sleep(260);
+      check('用完的臭彈伺服器會擋下',
+        !!turnCli.lastError() && /用完/.test(turnCli.lastError().message),
+        turnCli.lastError() && turnCli.lastError().message);
+
+      /* 雙擊：彈道事件要帶兩發 */
+      v0 = host.view.game.version;
+      const shotsBefore = watcher.shots.length;
+      turnCli.send('room:fire', { angle: 55, power: 72, item: 'double' });
+      await host.until((v) => v.game.version > v0, '雙擊生效', 10000);
+      const dbl = watcher.shots[watcher.shots.length - 1];
+      check('雙擊送給三方的事件帶著兩條彈道',
+        dbl && dbl.item === 'double' && dbl.volley && dbl.volley.length === 2,
+        dbl && JSON.stringify({ item: dbl.item, volley: dbl.volley && dbl.volley.length }));
+      check('觀戰者也收到了這一發', watcher.shots.length > shotsBefore);
+
+      /* 補血：先把血打低，再補 */
+      const healSide = turnSide;
+      const healCli = turnCli;
+      /* 等輪回自己 */
+      while (host.view.game.turn !== healSide && !host.view.game.over) {
+        const s = host.view.game.turn;
+        const c = s === 'cat' ? host : guest;
+        v0 = host.view.game.version;
+        c.send('room:fire', { angle: 45, power: 60 });
+        await host.until((v) => v.game.version > v0, '換手', 10000);
+      }
+      if (!host.view.game.over) {
+        const hpBefore = host.view.game.fighters[healSide].hp;
+        const healLeft = host.view.game.items[healSide].heal;
+        v0 = host.view.game.version;
+        healCli.send('room:heal', {});
+        await host.until((v) => v.game.version > v0, '補血生效', 10000);
+        const hpAfter = host.view.game.fighters[healSide].hp;
+        check('補血會回血（或已滿血時維持上限）',
+          hpAfter >= hpBefore && hpAfter <= host.view.game.maxHp,
+          hpBefore + ' → ' + hpAfter);
+        check('補血道具被扣掉', host.view.game.items[healSide].heal === healLeft - 1);
+        check('補血之後回合交給對手', host.view.game.turn !== healSide);
+        const last = host.view.room.summary[host.view.room.summary.length - 1];
+        check('補血也會寫進操作摘要', last.result === 'heal' && last.text.includes('補血'), last.text);
+      }
+    }
+
     /* ---- 6. 打完一整局 ---- */
+    /* 前面測道具時已經打了幾發，摘要要比對增量而不是總數 */
+    const summaryBefore = host.view.room.summary.length;
     let turns = 0;
     while (!host.view.game.over && turns < 90) {
       const side = host.view.game.turn;
@@ -297,9 +395,11 @@ async function main() {
       host.view.game.fighters.dog.hp === watcher.view.game.fighters.dog.hp);
 
     /* ---- 7. 操作摘要 ---- */
-    check('操作摘要筆數與實際出手數一致（房主）', host.view.room.summary.length === turns,
-      host.view.room.summary.length + ' vs ' + turns);
-    check('觀戰者也看得到完整操作摘要', watcher.view.room.summary.length === turns);
+    check('操作摘要筆數與實際出手數一致（房主）',
+      host.view.room.summary.length === summaryBefore + turns,
+      host.view.room.summary.length + ' vs ' + (summaryBefore + turns));
+    check('觀戰者也看得到完整操作摘要',
+      watcher.view.room.summary.length === host.view.room.summary.length);
     const entry = host.view.room.summary[0];
     check('摘要每一筆都有角度、力道、風向與結果文字',
       entry && typeof entry.angle === 'number' && typeof entry.power === 'number' &&

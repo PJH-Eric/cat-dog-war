@@ -133,6 +133,15 @@
       tone({ t: t + 0.14, f: 220, f2: 110, dur: 0.3, type: 'triangle', v: 0.22 });
     },
     blocked: function (t) { tone({ t: t, f: 240, f2: 205, dur: 0.14, type: 'square', v: 0.16 }); },
+    /* 補血：往上爬的三個音，跟受傷的下行音明顯不一樣 */
+    heal: function (t) {
+      [76, 83, 88].forEach(function (n, i) {
+        tone({ t: t + i * 0.09, f: hz(n), dur: 0.3, type: 'sine', v: 0.3 });
+      });
+      tone({ t: t + 0.18, f: hz(95), dur: 0.36, type: 'triangle', v: 0.14 });
+    },
+    /* 蓄力到頂：提示再按住也不會更大力 */
+    charged: function (t) { tone({ t: t, f: 1200, dur: 0.06, type: 'sine', v: 0.16 }); },
     turn: function (t) {
       tone({ t: t, f: hz(74), dur: 0.14, type: 'triangle', v: 0.24 });
       tone({ t: t + 0.09, f: hz(81), dur: 0.18, type: 'triangle', v: 0.2 });

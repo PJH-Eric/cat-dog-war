@@ -24,6 +24,9 @@
     screen: 's-home',
     mode: null,                 // null | 'solo' | 'online'
     aim: { angle: 45, power: 60 },
+    item: null,                 // 這一發要搭配的道具；一回合最多一個，不能疊加
+    /* 按住戰場蓄力的暫時狀態；放開就發射 */
+    charge: { on: false, t0: 0, raf: 0, pointerId: null },
     busy: false,                // 動畫播放中，暫時不能再出手
     chatOpen: false,
     unread: 0,
@@ -240,11 +243,6 @@
     if (!ctx) return;
 
     if (ctx.game) Board.setState(ctx.game);
-    /* 把控制列的實際高度告訴 CSS，讓提示訊息剛好浮在它上方而不是壓在上面 */
-    var controls = $('controls');
-    if (controls) {
-      document.documentElement.style.setProperty('--controls-h', controls.offsetHeight + 'px');
-    }
     renderHp(ctx);
     renderTurnbar(ctx);
     renderControls(ctx);
@@ -252,6 +250,25 @@
     renderOverlay(ctx);
     renderChatDock(ctx);
     updateAimVisibility(ctx);
+    syncControlsHeight();
+  }
+
+  var lastControlsH = -1;
+
+  /**
+   * 控制列的高度會隨內容變動（道具列出現、道具用完少一顆、換成窄版排版），
+   * 高度一變，舞台可用的高度就跟著變。這裡在渲染「之後」才量，量到不一樣
+   * 就叫畫布重新算一次尺寸 —— 否則畫布會沿用舊尺寸而超出舞台。
+   */
+  function syncControlsHeight() {
+    var controls = $('controls');
+    if (!controls) return;
+    var h = controls.offsetHeight;
+    if (h === lastControlsH) return;
+    lastControlsH = h;
+    /* 提示訊息靠這個變數浮在控制列上方，而不是被壓在下面 */
+    document.documentElement.style.setProperty('--controls-h', h + 'px');
+    Board.resize();
   }
 
   function renderHp(ctx) {
@@ -326,13 +343,14 @@
     $('b-power-up').disabled = !can;
     $('b-power-dn').disabled = !can;
     $('b-fire').disabled = !can;
+    renderItemBar(ctx);
 
     if (!ctx.game || ctx.phase === 'waiting') {
       hint(ctx.mode === 'online' ? '等房主按下「開始對局」。' : '準備開打。');
     } else if (ctx.game.over) {
       hint('這一局結束了：' + ctx.game.reason);
     } else if (can) {
-      hint('輪到你了：調好角度與力道後按「發射！」。在戰場上拖曳也可以瞄準。');
+      hint('輪到你了：在戰場上按住蓄力、移動滑鼠調角度，放開就發射。');
     } else if (ctx.role === 'spectator') {
       hint('你正在觀戰，看得到全部盤面與摘要，但不能出手。');
     } else if (ctx.thinking) {
@@ -358,7 +376,7 @@
     var can;
     if (!g || ctx.phase === 'waiting') can = ctx.mode === 'online' ? '選邊、按準備、傳邀請連結' : '按開始';
     else if (g.over) can = ctx.mode === 'online' ? '再來一局 或 離開房間' : '再玩一局 或 回主選單';
-    else if (ctx.canFire) can = '調整角度（' + C.MIN_ANGLE + '–' + C.MAX_ANGLE + '°）與力道（' + C.MIN_POWER + '–' + C.MAX_POWER + '）後發射';
+    else if (ctx.canFire) can = '按住戰場蓄力放開發射，或搭配一個道具（角度 ' + C.MIN_ANGLE + '–' + C.MAX_ANGLE + '°、力道 ' + C.MIN_POWER + '–' + C.MAX_POWER + '）';
     else if (ctx.role === 'spectator') can = '觀戰中：可以看盤面、摘要與聊天，不能出手';
     else can = '等待對手出手';
     $('sum-can').textContent = can;
@@ -367,6 +385,36 @@
     $('sum-hp').textContent = g
       ? ('貓 ' + g.fighters.cat.hp + ' · 狗 ' + g.fighters.dog.hp)
       : '—';
+
+    /* 出力係數：血量掉了就會低於 100%，同樣力道飛得比較近 */
+    var force = $('sum-force');
+    if (force) {
+      if (!g || !ctx.mySide) {
+        force.textContent = '—';
+      } else {
+        var pct = Math.round(Rules.powerFactor(g, ctx.mySide) * 100);
+        force.textContent = pct + '%' + (pct < 100 ? '（受傷了，要加大力道）' : '（滿力）');
+      }
+    }
+
+    /* 雙方剩餘道具：這遊戲沒有隱藏資訊，觀戰者也看得到 */
+    var items = $('sum-items');
+    if (items) {
+      if (!g || !g.items) {
+        items.textContent = '—';
+      } else {
+        items.innerHTML = ['cat', 'dog'].map(function (side) {
+          var bag = g.items[side] || {};
+          var list = Rules.ITEM_ORDER.map(function (k) {
+            var n = bag[k] || 0;
+            return '<span class="' + (n > 0 ? '' : 'used') + '">' + Rules.ITEMS[k].icon +
+              esc(Rules.ITEMS[k].label) + '×' + n + '</span>';
+          }).join(' ');
+          return '<div><b>' + esc(Rules.SIDE_LABEL[side]) + '</b>：' + list + '</div>';
+        }).join('');
+      }
+    }
+
     $('sum-net').textContent = ctx.net;
 
     var timerText = '—';
@@ -648,6 +696,102 @@
     badge.textContent = app.unread > 99 ? '99+' : String(app.unread);
   }
 
+  /* ---------------------------------------------------------- 道具 */
+
+  /** 我這一邊的背包；還沒開局或身分是觀戰者時回傳空的 */
+  function myBag(ctx) {
+    if (!ctx || !ctx.game || !ctx.mySide || !ctx.game.items) return null;
+    return ctx.game.items[ctx.mySide] || null;
+  }
+
+  /**
+   * 畫出道具列。發射型道具是四選一的 radiogroup，補血是獨立按鈕
+   * （按下去直接生效並換手，所以不放進同一組選項裡）。
+   */
+  function renderItemBar(ctx) {
+    var bar = $('itembar');
+    var box = $('item-choices');
+    var healBtn = $('b-heal');
+    var bag = myBag(ctx);
+
+    /* 觀戰者與還沒開局時整條收起來，不佔走戰場空間 */
+    if (!bag) {
+      bar.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    bar.hidden = false;
+
+    var can = !!ctx.canFire;
+    /* 窄版與橫向只留得下圖示，文字用 .txt 包起來由 CSS 收掉；
+     * aria-label 一律寫完整名稱，螢幕閱讀器不會只聽到一個表情符號。 */
+    var html = '<button class="itemchip" type="button" role="radio" data-item=""' +
+      ' aria-label="不用道具" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
+      (can ? '' : ' disabled') +
+      '><span class="ico">🎯</span><span class="txt">不用道具</span></button>';
+
+    Rules.ITEM_ORDER.forEach(function (key) {
+      var it = Rules.ITEMS[key];
+      if (it.kind !== 'shot') return;
+      var n = bag[key] || 0;
+      var out = n <= 0;
+      html += '<button class="itemchip' + (out ? ' used' : '') + '" type="button" role="radio"' +
+        ' data-item="' + key + '" aria-checked="' + (app.item === key ? 'true' : 'false') + '"' +
+        ' aria-label="' + esc(it.label) + '，剩 ' + n + ' 個。' + esc(it.note) + '"' +
+        ' title="' + esc(it.label + '：' + it.note) + '"' + (can && !out ? '' : ' disabled') + '>' +
+        '<span class="ico">' + it.icon + '</span><span class="txt">' + esc(it.label) + '</span>' +
+        '<span class="num">×' + n + '</span></button>';
+    });
+    box.innerHTML = html;
+
+    var healN = bag.heal || 0;
+    var heal = Rules.ITEMS.heal;
+    healBtn.disabled = !can || healN <= 0;
+    UI.setLabel(healBtn, '<span class="ico">' + heal.icon + '</span>' +
+      '<span class="txt">補血</span><span class="num">×' + healN + '</span>');
+    healBtn.setAttribute('aria-label', '使用補血，剩 ' + healN + ' 個。' + heal.note);
+    healBtn.title = heal.label + '：' + heal.note;
+  }
+
+  /** 選一個道具；再按一次同一個就取消選取 */
+  function selectItem(key) {
+    var next = key || null;
+    app.item = (app.item === next) ? null : next;
+    Sound.play('tick');
+    var ctx = currentCtx();
+    if (ctx) renderItemBar(ctx);
+    if (app.item) {
+      var it = Rules.ITEMS[app.item];
+      hint(it.icon + ' ' + it.label + '：' + it.note);
+    } else {
+      hint('這一發不用道具。');
+    }
+  }
+
+  /** 使用補血：不發射，回血之後直接換手 */
+  function useHeal() {
+    var ctx = currentCtx();
+    if (!ctx || !ctx.canFire) {
+      hint('現在還不能用道具，等輪到你。', 'error');
+      Sound.play('blocked');
+      return;
+    }
+    if (ctx.mode === 'solo') {
+      var s = app.solo;
+      var res = Rules.applyHeal(s.state, s.mySide);
+      if (!res.ok) { hint(res.reason, 'error'); Sound.play('blocked'); return; }
+      s.state = res.state;
+      s.summary.push(summaryEntry(res.shot));
+      app.item = null;
+      Sound.play('heal');
+      toast(Rules.describeShot(res.shot));
+      renderBattle();
+      afterSoloShot();
+    } else {
+      Online.send('room:heal', {});
+    }
+  }
+
   /* ---------------------------------------------------------- 瞄準 */
 
   function updateAimVisibility(ctx) {
@@ -669,6 +813,59 @@
     var ctx = currentCtx();
     if (ctx) updateAimVisibility(ctx);
     if (!fromDrag) Sound.play('aim');
+  }
+
+  /* ------------------------------------------------------ 按住蓄力 */
+
+  /* 從最小力道拉到最大力道要按住多久 */
+  var CHARGE_MS = 1400;
+
+  /**
+   * 開始蓄力。角度立刻跟著按下去的位置走，力道從最小值開始隨時間長大，
+   * 到頂就停在最大值，放開才真的發射。
+   */
+  function startCharge(e, ctx) {
+    var c = app.charge;
+    c.on = true;
+    c.t0 = Date.now();
+    c.pointerId = e.pointerId;
+    $('chargebar').setAttribute('data-on', '1');
+    setAim(Board.pointToAim(e.clientX, e.clientY, ctx.mySide).angle, C.MIN_POWER, true);
+    Sound.play('tick');
+
+    var tick = function () {
+      if (!c.on) return;
+      var t = Math.min(1, (Date.now() - c.t0) / CHARGE_MS);
+      setAim(app.aim.angle, C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * t, true);
+      showCharge(t);
+      c.raf = w.requestAnimationFrame(tick);
+    };
+    c.raf = w.requestAnimationFrame(tick);
+  }
+
+  /** 蓄力中的即時讀數：力道條 + 角度與力道的數字 */
+  function showCharge(t) {
+    $('chargefill').style.width = Math.round(t * 100) + '%';
+    hint('蓄力中… 角度 ' + app.aim.angle + '° · 力道 ' + app.aim.power + '（放開就發射）');
+    Board.setCharge({ on: true, angle: app.aim.angle, power: app.aim.power });
+  }
+
+  /**
+   * 結束蓄力。
+   * @param {boolean} shoot true = 正常放開，發射；false = 手勢被打斷，取消
+   */
+  function endCharge(shoot) {
+    var c = app.charge;
+    if (!c.on) return;
+    c.on = false;
+    if (c.raf) w.cancelAnimationFrame(c.raf);
+    c.raf = 0;
+    c.pointerId = null;
+    $('chargebar').removeAttribute('data-on');
+    $('chargefill').style.width = '0%';
+    Board.setCharge({ on: false });
+    if (shoot) fire();
+    else hint('取消蓄力。角度 ' + app.aim.angle + '° · 力道 ' + app.aim.power + '。');
   }
 
   /* ============================================================ 單機對局 */
@@ -697,15 +894,18 @@
 
   function soloFire() {
     var s = app.solo;
-    var check = Rules.legalShot(s.state, s.mySide, app.aim.angle, app.aim.power);
+    var check = Rules.legalShot(s.state, s.mySide, app.aim.angle, app.aim.power, app.item);
     if (!check.ok) {
       hint(check.reason, 'error');
       Sound.play('blocked');
       Sound.vibrate(30);
       return;
     }
-    var res = Rules.applyShot(s.state, s.mySide, { angle: app.aim.angle, power: app.aim.power });
+    var res = Rules.applyShot(s.state, s.mySide, {
+      angle: app.aim.angle, power: app.aim.power, item: app.item
+    });
     if (!res.ok) { hint(res.reason, 'error'); Sound.play('blocked'); return; }
+    app.item = null;                     // 道具用掉了，下一回合重新選
     playShotThen(res, function () {
       s.state = res.state;
       s.summary.push(summaryEntry(res.shot));
@@ -724,10 +924,23 @@
     clearTimeout(s.aiTimer);
     s.aiTimer = setTimeout(function () {
       if (!s.state || s.state.over || s.state.turn !== s.aiSide) { s.thinking = false; renderBattle(); return; }
-      var shot = AI.chooseShot(s.state, s.aiSide, s.level, Math.random);
-      var res = Rules.applyShot(s.state, s.aiSide, shot);
+      var action = AI.chooseAction(s.state, s.aiSide, s.level, Math.random);
+      var res = action.type === 'heal'
+        ? Rules.applyHeal(s.state, s.aiSide)
+        : Rules.applyShot(s.state, s.aiSide, action);
       s.thinking = false;
       if (!res.ok) { renderBattle(); return; }
+
+      /* 補血沒有砲彈可以播，直接套用狀態並換手 */
+      if (action.type === 'heal') {
+        s.state = res.state;
+        s.summary.push(summaryEntry(res.shot, s.level));
+        Sound.play('heal');
+        toast(Rules.describeShot(res.shot));
+        renderBattle();
+        afterSoloShot();
+        return;
+      }
       playShotThen(res, function () {
         s.state = res.state;
         s.summary.push(summaryEntry(res.shot, s.level));
@@ -754,6 +967,7 @@
   function summaryEntry(shot, aiLevel) {
     return {
       n: shot.n, side: shot.side, angle: shot.angle, power: shot.power, wind: shot.wind,
+      item: shot.item || null,
       result: shot.result, damage: shot.damage, hpAfter: shot.hpAfter, distance: shot.distance,
       aiLevel: aiLevel || null, text: Rules.describeShot(shot)
     };
@@ -1234,36 +1448,41 @@
     $('in-angle').addEventListener('change', function () { Sound.play('tick'); });
     $('in-power').addEventListener('change', function () { Sound.play('tick'); });
     $('b-fire').addEventListener('click', fire);
+    $('b-heal').addEventListener('click', function () { Sound.play('click'); useHeal(); });
+    $('item-choices').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-item]');
+      if (!b || b.disabled) return;
+      selectItem(b.getAttribute('data-item'));
+    });
 
-    /* 戰場拖曳瞄準 */
+    /* 戰場蓄力瞄準：按住開始蓄力、移動調角度、放開就發射 */
     var canvas = $('board');
-    var dragging = false;
     canvas.addEventListener('pointerdown', function (e) {
       var ctx = currentCtx();
-      if (!ctx || !ctx.canFire) return;
-      dragging = true;
-      canvas.setPointerCapture(e.pointerId);
-      var a = Board.pointToAim(e.clientX, e.clientY, ctx.mySide);
-      setAim(a.angle, a.power, true);
+      if (!ctx || !ctx.canFire || app.busy) return;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      startCharge(e, ctx);
       e.preventDefault();
     });
     canvas.addEventListener('pointermove', function (e) {
-      if (!dragging) return;
+      if (!app.charge.on) return;
       var ctx = currentCtx();
       if (!ctx || !ctx.mySide) return;
-      var a = Board.pointToAim(e.clientX, e.clientY, ctx.mySide);
-      setAim(a.angle, a.power, true);
+      /* 蓄力中只跟著滑鼠改角度，力道由按住的時間決定 */
+      setAim(Board.pointToAim(e.clientX, e.clientY, ctx.mySide).angle, app.aim.power, true);
       e.preventDefault();
     });
-    var endDrag = function (e) {
-      if (!dragging) return;
-      dragging = false;
+    canvas.addEventListener('pointerup', function (e) {
+      if (!app.charge.on) return;
       try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
-      Sound.play('tick');
-      hint('角度 ' + app.aim.angle + '°、力道 ' + app.aim.power + '。按「發射！」送出，或繼續微調。');
-    };
-    canvas.addEventListener('pointerup', endDrag);
-    canvas.addEventListener('pointercancel', endDrag);
+      endCharge(true);
+      e.preventDefault();
+    });
+    /* 手勢被系統打斷（來電、切分頁）時取消，不要莫名其妙射出去 */
+    canvas.addEventListener('pointercancel', function () { endCharge(false); });
+    canvas.addEventListener('lostpointercapture', function () {
+      if (app.charge.on) endCharge(false);
+    });
 
     /* 疊層上的按鈕（房間、結算） */
     $('overlay-card').addEventListener('click', onOverlayClick);
@@ -1381,7 +1600,10 @@
       return;
     }
     if (ctx.mode === 'solo') soloFire();
-    else Online.send('room:fire', { angle: app.aim.angle, power: app.aim.power });
+    else {
+      Online.send('room:fire', { angle: app.aim.angle, power: app.aim.power, item: app.item });
+      app.item = null;               // 送出後就清掉，伺服器回同步時會重畫道具列
+    }
   }
 
   function onOverlayClick(e) {

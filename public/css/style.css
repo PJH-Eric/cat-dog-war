@@ -178,8 +178,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .state-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 
 .lobby-me{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
-.lobby-nick{flex:1 1 240px;display:flex;flex-direction:column;gap:6px;font-weight:800;font-size:.88rem}
-.lobby-nick input{text-transform:none;letter-spacing:normal}
+/* 暱稱固定一行：標籤在左、輸入框在右，標籤不換行也不被壓縮 */
+.lobby-nick{flex:1 1 260px;display:flex;flex-direction:row;align-items:center;gap:10px;font-weight:800;font-size:.88rem}
+.lobby-nick>span{flex:0 0 auto;white-space:nowrap}
+.lobby-nick input{flex:1 1 auto;min-width:0;text-transform:none;letter-spacing:normal}
 .lobby-me-btns{display:flex;gap:10px;flex:0 1 auto}
 .lobby-join{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .lobby-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px}
@@ -593,4 +595,81 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   .battle-aside{flex:0 0 clamp(340px,28%,460px)}
   .sum-line{font-size:.88rem}
   .sum-list li{font-size:.82rem}
+}
+
+/* ============================ 道具列與蓄力條 ============================ */
+
+/* 道具列排在角度／力道之上。
+   一律用換行而不是橫向捲動：捲動在手機上很容易被忽略，也會讓元素跑出視窗外。 */
+.itembar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.itembar-label{flex:0 0 auto;font-weight:800;font-size:.86rem;color:var(--ink-soft)}
+.item-choices{display:flex;gap:6px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
+.itemchip{
+  flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  min-height:48px;padding:8px 11px;font:inherit;font-weight:800;font-size:.86rem;
+  border:3px solid var(--line);border-radius:16px;background:#fff;color:var(--ink);
+  cursor:pointer;white-space:nowrap;overflow:hidden;
+  transition:transform .08s,border-color .12s,background .12s;
+}
+.itemchip .txt{overflow:hidden;text-overflow:ellipsis}
+.itemchip .ico{font-size:1.05rem;line-height:1}
+.itemchip .num{font-size:.78rem;color:var(--ink-soft)}
+.itemchip:hover:not(:disabled){transform:translateY(-1px)}
+.itemchip[aria-checked="true"]{
+  border-color:var(--grape-d);background:var(--grape);
+  box-shadow:0 0 0 3px rgba(164,143,219,.26)
+}
+.itemchip:disabled{opacity:.42;cursor:not-allowed}
+.itemchip:focus-visible{outline:3px solid var(--sky-d);outline-offset:2px}
+.itemchip.used{text-decoration:line-through}
+
+.itemheal{flex:0 0 auto}
+
+/* 蓄力條：按住戰場時即時反映力道 */
+.chargebar{
+  position:relative;height:14px;border:3px solid var(--ink);border-radius:999px;
+  background:#fff;overflow:hidden;margin-bottom:10px;display:none
+}
+.chargebar[data-on="1"]{display:block}
+.chargebar>i{
+  display:block;height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,var(--mint-d),var(--lemon-d) 55%,var(--peach-d));
+  transition:width .04s linear
+}
+@media (prefers-reduced-motion:reduce){.chargebar>i{transition:none}}
+
+/* 窄版：道具只留圖示與數量，文字收進 aria-label，一列就放得下五個 */
+@media (max-width:560px){
+  .itembar{gap:6px}
+  .itembar-label{display:none}
+  .itemchip{padding:8px;gap:3px;font-size:.8rem}
+  .itemchip .txt{display:none}
+  .itemheal .b3-lbl .txt{display:none}
+}
+
+/* 橫向矮視窗：控制列要盡量矮，把高度留給戰場 */
+@media (max-height:470px) and (orientation:landscape){
+  .itembar{gap:5px;margin-bottom:6px}
+  .itembar-label{display:none}
+  .itemchip{min-height:40px;padding:6px 8px;gap:3px;font-size:.78rem;border-width:2px;border-radius:12px}
+  .itemchip .txt{display:none}
+  .itemheal .b3-lbl .txt{display:none}
+  /* 蓄力條在橫向收起來：砲口旁邊的即時讀數已經看得到角度與力道 */
+  .chargebar{display:none!important}
+}
+
+/* 橫向矮視窗（例如 667×375）：控制列再壓一次，把高度還給戰場畫布。
+   所有可點元素仍維持 38px 以上的命中高度。 */
+@media (orientation:landscape) and (max-height:400px){
+  .battle-main{padding-top:calc(2px + var(--safe-t));padding-bottom:calc(2px + var(--safe-b))}
+  .controls{padding-top:2px;padding-bottom:2px}
+  .ctrl-grid{gap:6px}
+  .itembar{margin-bottom:2px;gap:4px}
+  .itemchip{min-height:38px;padding:4px 7px;border-radius:11px}
+  .ctrl{padding:2px 6px;min-width:168px}
+  .stepbtn{width:38px;height:38px}
+  .ctrl input[type=range]{min-height:28px}
+  .ctrl label{font-size:.74rem}
+  .btn3d.fire{min-height:46px;font-size:.92rem;min-width:112px;padding:8px 14px calc(8px + var(--d))}
+  .itemheal{min-height:46px;padding:8px 12px calc(8px + var(--d))}
 }

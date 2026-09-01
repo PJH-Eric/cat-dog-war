@@ -378,52 +378,228 @@ test('describeShot 產生可讀的中文摘要', () => {
   assert.ok(text.includes('力道'));
 });
 
-/* ============================================================ 5. 地形破壞 */
+/* ================================================ 5. 固定地形與固定站位 */
 
-group('5. 地形破壞');
+group('5. 固定地形與固定站位');
 
-test('爆炸會把地形炸低，且不會炸穿地板下限', () => {
-  const ground = new Array(Rules.WORLD.COLS).fill(200);
-  const before = ground.slice();
-  Rules.carve(ground, 600, 200, C.CRATER_R);
-  const col = Math.round(Rules.colAt(600));
-  assert.ok(ground[col] < before[col], '正中央應該被炸低');
-  for (let i = 0; i < ground.length; i++) {
-    assert.ok(ground[i] <= before[i], '第 ' + i + ' 欄不應該變高');
-    assert.ok(ground[i] >= Rules.WORLD.MIN_GROUND, '不可以炸穿地板下限');
+test('開打之後地形完全不會改變', () => {
+  let st = Rules.createState({ seed: 'FIXED1', first: 'cat' });
+  const before = st.ground.slice();
+  for (let i = 0; i < 8 && !st.over; i++) {
+    const side = st.turn;
+    const r = Rules.applyShot(st, side, { angle: 40 + i * 3, power: 55 + i * 4 });
+    assert.strictEqual(r.ok, true);
+    st = r.state;
+  }
+  assert.deepStrictEqual(st.ground, before, '打了好幾發之後地形不該有任何一欄改變');
+});
+
+test('貓狗的座標整局固定不動', () => {
+  let st = Rules.createState({ seed: 'FIXED2', first: 'dog' });
+  const pos = {
+    cat: { x: st.fighters.cat.x, y: st.fighters.cat.y },
+    dog: { x: st.fighters.dog.x, y: st.fighters.dog.y }
+  };
+  for (let i = 0; i < 8 && !st.over; i++) {
+    const r = Rules.applyShot(st, st.turn, { angle: 50, power: 70 });
+    assert.strictEqual(r.ok, true);
+    st = r.state;
+    for (const s of ['cat', 'dog']) {
+      assert.strictEqual(st.fighters[s].x, pos[s].x, s + ' 的 x 不該改變');
+      assert.strictEqual(st.fighters[s].y, pos[s].y, s + ' 的 y 不該改變');
+    }
   }
 });
 
-test('離爆炸點夠遠的地形完全不受影響', () => {
-  const ground = new Array(Rules.WORLD.COLS).fill(200);
-  Rules.carve(ground, 600, 200, C.CRATER_R);
-  assert.strictEqual(ground[0], 200);
-  assert.strictEqual(ground[ground.length - 1], 200);
+test('兩邊的站台一樣高，沒有人佔到地形便宜', () => {
+  for (let i = 0; i < 60; i++) {
+    const st = Rules.createState({ seed: 'LEVEL' + i });
+    assert.ok(Math.abs(st.fighters.cat.y - st.fighters.dog.y) < 1e-9,
+      '種子 ' + i + ' 的兩邊高度不同');
+  }
 });
 
-test('地形被炸掉之後角色會落到新的地面上', () => {
-  const st = Rules.createState({ seed: 'FALLAA', first: 'cat' });
-  st.wind = 0;
-  const dogY0 = st.fighters.dog.y;
-  /* 直接在狗腳邊炸一發（用規則核心自己的 carve 驗證落地邏輯） */
-  const r = Rules.applyShot(st, 'cat', { angle: 45, power: 60 });
+test('站台高度就是地面加上 STAND_H', () => {
+  const st = Rules.createState({ seed: 'STAND1' });
+  for (const s of ['cat', 'dog']) {
+    const g = Rules.groundAt(st.ground, st.fighters[s].x);
+    assert.ok(Math.abs(st.fighters[s].y - (g + C.STAND_H)) < 1e-9,
+      s + ' 沒有站在站台上');
+  }
+});
+
+test('中央柵欄比兩側站立面高，擋得住平射', () => {
+  for (let i = 0; i < 30; i++) {
+    const st = Rules.createState({ seed: 'WALL' + i });
+    const wallTop = Rules.groundAt(st.ground, Rules.WORLD.W / 2);
+    assert.ok(wallTop > st.fighters.cat.y,
+      '種子 ' + i + ' 的柵欄頂端沒有高過站立面');
+  }
+});
+
+/* ==================================================== 5b. 體力影響出力 */
+
+group('5b. 血量越低、同樣力道飛得越近');
+
+test('出力係數滿血是 1，血量歸零是 WEAK_MIN', () => {
+  const st = Rules.createState({ seed: 'FORCE1' });
+  assert.ok(Math.abs(Rules.powerFactor(st, 'cat') - 1) < 1e-9, '滿血應該是 1');
+  const hurt = Rules.cloneState(st);
+  hurt.fighters.cat.hp = 0;
+  assert.ok(Math.abs(Rules.powerFactor(hurt, 'cat') - C.WEAK_MIN) < 1e-9);
+});
+
+test('血量越低，同一組角度力道的落點越近', () => {
+  const base = Rules.createState({ seed: 'FORCE2', first: 'cat' });
+  base.wind = 0;
+  let prev = Infinity;
+  for (const hp of [100, 80, 60, 40, 20]) {
+    const st = Rules.cloneState(base);
+    st.fighters.cat.hp = hp;
+    const sim = Rules.simulate(st, 'cat', 45, 70, { wind: 0, trace: false });
+    const dist = sim.impact.x - st.fighters.cat.x;
+    assert.ok(dist < prev, '血量 ' + hp + ' 的落點應該比上一級更近');
+    prev = dist;
+  }
+});
+
+test('出力係數只看血量，沒有任何亂數', () => {
+  const st = Rules.createState({ seed: 'FORCE3' });
+  st.fighters.dog.hp = 37;
+  const a = Rules.powerFactor(st, 'dog');
+  const b = Rules.powerFactor(Rules.cloneState(st), 'dog');
+  assert.strictEqual(a, b);
+});
+
+/* ============================================================ 5c. 道具 */
+
+group('5c. 四種道具');
+
+test('開局雙方各拿到每種道具一個', () => {
+  const st = Rules.createState({ seed: 'ITEM1' });
+  for (const side of ['cat', 'dog']) {
+    for (const k of Rules.ITEM_ORDER) {
+      assert.strictEqual(st.items[side][k], 1, side + ' 的 ' + k + ' 不是 1 個');
+    }
+  }
+});
+
+test('用掉的道具會從背包扣掉，而且不會補回來', () => {
+  const st = Rules.createState({ seed: 'ITEM2', first: 'cat' });
+  const r = Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'stink' });
   assert.strictEqual(r.ok, true);
-  const expectCat = Rules.groundAt(r.state.ground, r.state.fighters.cat.x);
-  const expectDog = Rules.groundAt(r.state.ground, r.state.fighters.dog.x);
-  assert.ok(Math.abs(r.state.fighters.cat.y - expectCat) < 1e-6, '貓沒有貼在地面上');
-  assert.ok(Math.abs(r.state.fighters.dog.y - expectDog) < 1e-6, '狗沒有貼在地面上');
-  assert.ok(r.state.fighters.dog.y <= dogY0 + 1e-6, '地面只會被炸低，不會變高');
+  assert.strictEqual(r.state.items.cat.stink, 0, '臭彈應該被扣掉');
+  assert.strictEqual(r.state.items.cat.bigbone, 1, '沒用到的道具不該被動到');
+  assert.strictEqual(r.state.items.dog.stink, 1, '不該扣到對手的');
 });
 
-test('圍牆會被連續轟炸打矮', () => {
-  const st = Rules.createState({ seed: 'WALLAA', first: 'cat' });
-  const wallCol = Math.round(Rules.WORLD.COLS / 2);
-  const before = st.ground[wallCol];
-  const ground = st.ground.slice();
-  for (let i = 0; i < 4; i++) {
-    Rules.carve(ground, Rules.WORLD.W / 2, ground[wallCol] - 5, C.CRATER_R);
+test('用完的道具不能再用', () => {
+  let st = Rules.createState({ seed: 'ITEM3', first: 'cat' });
+  st.items.cat.double = 0;
+  const chk = Rules.legalShot(st, 'cat', 45, 60, 'double');
+  assert.strictEqual(chk.ok, false);
+  assert.ok(chk.reason.includes('用完'), '要說明是用完了：' + chk.reason);
+  assert.strictEqual(Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'double' }).ok, false);
+});
+
+test('補血不能拿來當發射道具', () => {
+  const st = Rules.createState({ seed: 'ITEM4', first: 'cat' });
+  const chk = Rules.legalShot(st, 'cat', 45, 60, 'heal');
+  assert.strictEqual(chk.ok, false);
+});
+
+test('雙擊會丟兩發，傷害等於單發的兩倍', () => {
+  /* 挑一組一定會直接命中的角度力道：直接用模擬找出來 */
+  const st = Rules.createState({ seed: 'ITEM5', first: 'cat' });
+  st.wind = 0;
+  let hit = null;
+  for (let a = 20; a <= 80 && !hit; a += 1) {
+    for (let p = 30; p <= 100; p += 1) {
+      const sim = Rules.simulate(st, 'cat', a, p, { wind: 0, trace: false });
+      if (sim.impact.type === 'fighter' && sim.impact.target === 'dog') { hit = { a, p }; break; }
+    }
   }
-  assert.ok(ground[wallCol] < before - 50, '連續四發應該把圍牆打矮很多');
+  assert.ok(hit, '這張圖找不到能直接命中的組合，測試前提不成立');
+
+  const one = Rules.applyShot(st, 'cat', { angle: hit.a, power: hit.p });
+  const two = Rules.applyShot(st, 'cat', { angle: hit.a, power: hit.p, item: 'double' });
+  assert.strictEqual(one.shot.volley.length, 1, '沒帶道具應該只有一發');
+  assert.strictEqual(two.shot.volley.length, 2, '雙擊應該有兩發');
+  assert.strictEqual(two.shot.damage.dog, one.shot.damage.dog * 2, '雙擊傷害應該剛好兩倍');
+});
+
+test('大骨頭的命中判定與傷害都比較大', () => {
+  const plain = Rules.modOf(null);
+  const big = Rules.modOf('bigbone');
+  assert.ok(big.hitR > plain.hitR, '判定半徑要更大');
+  assert.ok(big.maxDamage > plain.maxDamage, '傷害要更高');
+  assert.strictEqual(big.blastR, plain.blastR, '大骨頭不該改爆炸範圍');
+});
+
+test('臭彈的爆炸範圍與傷害都比較大，但判定半徑不變', () => {
+  const plain = Rules.modOf(null);
+  const stink = Rules.modOf('stink');
+  assert.ok(stink.blastR > plain.blastR, '爆炸範圍要更大');
+  assert.ok(stink.maxDamage > plain.maxDamage, '傷害要更高');
+  assert.strictEqual(stink.hitR, plain.hitR, '臭彈不該改直接命中的判定半徑');
+});
+
+test('認不得的道具鍵值當作沒帶道具，不會擋住出手', () => {
+  const st = Rules.createState({ seed: 'ITEM8', first: 'cat' });
+  const r = Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: '不存在的道具' });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.shot.item, null);
+});
+
+test('補血會回血、扣掉道具，並把回合交給對手', () => {
+  const st = Rules.createState({ seed: 'HEAL1', first: 'cat' });
+  st.fighters.cat.hp = 40;
+  const r = Rules.applyHeal(st, 'cat');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.state.fighters.cat.hp, 40 + C.HEAL_AMOUNT);
+  assert.strictEqual(r.state.items.cat.heal, 0);
+  assert.strictEqual(r.state.turn, 'dog', '補完血要換對手');
+  assert.strictEqual(r.state.turnNo, st.turnNo + 1);
+  assert.strictEqual(r.shot.result, 'heal');
+});
+
+test('補血不會超過血量上限', () => {
+  const st = Rules.createState({ seed: 'HEAL2', first: 'cat' });
+  st.fighters.cat.hp = st.maxHp - 5;
+  const r = Rules.applyHeal(st, 'cat');
+  assert.strictEqual(r.state.fighters.cat.hp, st.maxHp);
+  assert.strictEqual(r.shot.heal, 5);
+});
+
+test('沒有補血道具就不能補血，也不能在對手回合補', () => {
+  const st = Rules.createState({ seed: 'HEAL3', first: 'cat' });
+  assert.strictEqual(Rules.applyHeal(st, 'dog').ok, false, '不是自己的回合不能補');
+  const empty = Rules.cloneState(st);
+  empty.items.cat.heal = 0;
+  assert.strictEqual(Rules.applyHeal(empty, 'cat').ok, false, '用完了不能補');
+});
+
+test('道具會出現在操作摘要的文字裡', () => {
+  const st = Rules.createState({ seed: 'ITEM9', first: 'cat' });
+  const r = Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'stink' });
+  const text = Rules.describeShot(r.shot);
+  assert.ok(text.includes('臭彈'), '摘要要寫出用了哪個道具：' + text);
+  const h = Rules.applyHeal(st, 'cat');
+  assert.ok(Rules.describeShot(h.shot).includes('補血'));
+});
+
+test('toPublic / fromPublic 會保留背包內容', () => {
+  const st = Rules.createState({ seed: 'ITEM10', first: 'cat' });
+  const after = Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'bigbone' }).state;
+  const round = Rules.fromPublic(Rules.toPublic(after));
+  assert.deepStrictEqual(round.items, after.items);
+});
+
+test('applyShot 不會改動傳進來的狀態', () => {
+  const st = Rules.createState({ seed: 'ITEM11', first: 'cat' });
+  const snapshot = JSON.stringify(st);
+  Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'double' });
+  assert.strictEqual(JSON.stringify(st), snapshot, 'applyShot 必須是純函式');
 });
 
 /* ============================================================ 6. AI */

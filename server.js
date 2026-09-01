@@ -333,7 +333,16 @@ io.on('connection', (socket) => {
   }));
 
   socket.on('room:fire', withRoom((room, p) => {
-    const res = room.fire(socket.data.clientId, { angle: p.angle, power: p.power }, now());
+    const res = room.fire(socket.data.clientId, { angle: p.angle, power: p.power, item: p.item }, now());
+    if (!res.ok) return fail(socket, res.error, res.code);
+    broadcastShot(room, res.shot);
+    syncLobby();
+    scheduleAi(room);
+  }));
+
+  /* 補血是獨立事件：不發射砲彈，用完直接換手 */
+  socket.on('room:heal', withRoom((room) => {
+    const res = room.heal(socket.data.clientId, now());
     if (!res.ok) return fail(socket, res.error, res.code);
     broadcastShot(room, res.shot);
     syncLobby();

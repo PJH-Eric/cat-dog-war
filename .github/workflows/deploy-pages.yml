@@ -1,0 +1,83 @@
+# 推上 main 就自動把前端部署到 GitHub Pages。
+#
+# 前端（這個 Pages 站台）和遊戲伺服器（Render）是分開的兩個東西：
+#   - 靜態畫面、規則、AI、單機模式 → 都在 Pages 上，不需要伺服器
+#   - 線上對戰 → 需要一台開著的 Socket.IO 伺服器
+#
+# 伺服器位址從 repository variable `GAME_SERVER_URL` 讀進來，
+# 在建置時由 scripts/inject-server-url.js 寫進 public/js/config.js。
+# 設定位置：Settings → Secrets and variables → Actions → Variables → New repository variable
+#   名稱：GAME_SERVER_URL
+#   值　：https://你的-render-服務.onrender.com
+#
+# 沒有設定這個變數時仍然會正常部署，只是線上對戰會顯示「連不到伺服器」，
+# 單機對戰完全不受影響。玩家也可以在網址加 ?server=https://... 臨時指定。
+name: 部署到 GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時只跑一個部署；新的 push 進來就取消還在排隊的舊的
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 建置
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 安裝相依套件
+        run: npm ci
+
+      # 測試沒過就不要部署，免得把壞掉的版本推上去
+      - name: 規則與 AI 測試
+        run: npm test
+
+      - name: 注入遊戲伺服器位址
+        env:
+          GAME_SERVER_URL: ${{ vars.GAME_SERVER_URL }}
+        run: |
+          if [ -z "$GAME_SERVER_URL" ]; then
+            echo "::warning::沒有設定 GAME_SERVER_URL，這次部署的站台只能玩單機。"
+            echo "::warning::到 Settings → Secrets and variables → Actions → Variables 新增後重新部署即可。"
+          else
+            echo "遊戲伺服器：$GAME_SERVER_URL"
+          fi
+          node scripts/inject-server-url.js
+
+      # GitHub Pages 預設會用 Jekyll 處理，底線開頭的檔案會被吃掉；關掉它
+      - name: 關閉 Jekyll 處理
+        run: touch public/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    name: 部署
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 發布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
