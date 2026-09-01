@@ -11,7 +11,7 @@
  *   B. 主控台不可以有未處理的錯誤。
  *   C. 單機完整一局：選邊 → 選難度 → 開打 → 發射 → 電腦回擊 → 結算 → 再玩一局。
  *   D. 設定彈窗：開啟、焦點鎖定、Escape 關閉、焦點歸位、靜音設定重新載入後仍保留。
- *   E. 窄版的操作摘要面板與聊天室可以展開收合，且不擋住發射鈕。
+ *   E. 操作摘要可以展開收合，且聊天室與道具 HUD 不遮住主要畫面。
  *   F. 線上 UI：同一個瀏覽器開三個分頁（房主、玩家、觀戰），走完邀請連結 →
  *      選邊 → 準備 → 開打 → 出手 → 摘要更新 → 聊天室，並確認觀戰者的按鈕確實不存在。
  *
@@ -137,11 +137,11 @@ const PAGE_HELPERS = `
       var fab = document.getElementById('b-settings');
       var fr = fab.getBoundingClientRect();
 
-      /* 收合中的抽屜（窄版的操作摘要、收起來的聊天面板）是刻意畫在畫面外的，
+      /* 收合中的抽屜（操作摘要、收起來的聊天面板）是刻意畫在畫面外的，
          不算版面溢出，也不用檢查命中區。 */
       function offCanvas(el) {
         var aside = el.closest ? el.closest('#battle-aside') : null;
-        if (aside && !aside.classList.contains('open') && window.innerWidth < 980) return true;
+        if (aside && !aside.classList.contains('open')) return true;
         var panel = el.closest ? el.closest('#chat-panel') : null;
         if (panel && panel.hidden) return true;
         return false;
@@ -202,16 +202,26 @@ const PAGE_HELPERS = `
       var s = document.getElementById('stage');
       var cr = c.getBoundingClientRect();
       var sr = s.getBoundingClientRect();
-      var fire = document.getElementById('b-fire').getBoundingClientRect();
+      var controls = document.getElementById('controls').getBoundingClientRect();
+      var items = document.getElementById('stage-items').getBoundingClientRect();
+      var itemPanels = Array.prototype.map.call(
+        document.querySelectorAll('#stage-items .stage-item-panel'),
+        function (el) { return el.getBoundingClientRect(); }
+      );
       var chat = document.getElementById('chatdock');
       var chatRect = chat.hidden ? null : chat.getBoundingClientRect();
+      var chatCoversItems = chatRect ? itemPanels.some(function (panel) {
+        return chatRect.left < panel.right && chatRect.right > panel.left &&
+          chatRect.top < panel.bottom && chatRect.bottom > panel.top;
+      }) : false;
       return {
         canvas: { w: Math.round(cr.width), h: Math.round(cr.height), l: Math.round(cr.left), r: Math.round(cr.right), t: Math.round(cr.top), b: Math.round(cr.bottom) },
         stage: { w: Math.round(sr.width), h: Math.round(sr.height), l: Math.round(sr.left), r: Math.round(sr.right), t: Math.round(sr.top), b: Math.round(sr.bottom) },
         ratio: Math.round((cr.width / Math.max(1, cr.height)) * 100) / 100,
-        fire: { w: Math.round(fire.width), h: Math.round(fire.height), t: Math.round(fire.top), b: Math.round(fire.bottom), l: Math.round(fire.left), r: Math.round(fire.right) },
-        chatCoversFire: chatRect ? (chatRect.left < fire.right && chatRect.right > fire.left && chatRect.top < fire.bottom && chatRect.bottom > fire.top) : false,
-        asideVisible: document.getElementById('battle-aside').getBoundingClientRect().left < window.innerWidth - 20
+        controls: { w: Math.round(controls.width), h: Math.round(controls.height) },
+        items: { w: Math.round(items.width), h: Math.round(items.height), l: Math.round(items.left), r: Math.round(items.right), t: Math.round(items.top), b: Math.round(items.bottom) },
+        chatCoversItems: chatCoversItems,
+        asideVisible: document.getElementById('battle-aside').classList.contains('open')
       };
     },
     click: function (sel) {
@@ -411,24 +421,29 @@ async function main() {
       st.ratio <= 1200 / 640 + 0.02 && st.ratio > 0.8 &&
       st.canvas.w <= st.stage.w + 2 && st.canvas.h <= st.stage.h + 2,
       JSON.stringify({ ratio: st.ratio, canvas: st.canvas, stage: st.stage }));
-    check(v.name + '：發射鈕看得到且沒有被聊天室蓋住',
-      st.fire.h >= 44 && st.fire.b <= v.height + 2 && !st.chatCoversFire,
-      JSON.stringify(st.fire) + ' chatCovers=' + st.chatCoversFire);
-    check(v.name + '：寬版摘要常駐、窄版預設收起',
-      v.width >= 980 ? st.asideVisible : !st.asideVisible,
+    check(v.name + '：控制列已移除，畫布取得完整高度',
+      st.controls.h === 0 && st.canvas.h <= st.stage.h + 2,
+      JSON.stringify({ controls: st.controls, canvas: st.canvas, stage: st.stage }));
+    check(v.name + '：天空左右都有雙方道具資訊且不被聊天室蓋住',
+      st.items.w > 0 && st.items.h > 0 && st.items.l >= st.canvas.l - 2 &&
+      st.items.r <= st.canvas.r + 2 && !st.chatCoversItems,
+      JSON.stringify({ items: st.items, canvas: st.canvas, chatCovers: st.chatCoversItems }));
+    check(v.name + '：操作摘要預設收起，不佔用畫布',
+      st.asideVisible === false,
       'asideVisible=' + st.asideVisible);
+    const itemHud = await cdp.json('({panels:document.querySelectorAll("#stage-items .stage-item-panel").length,buttons:document.querySelectorAll("#stage-items .stage-item-btn").length})');
+    check(v.name + '：天空 HUD 同時顯示貓狗兩側道具',
+      itemHud.panels === 2 && itemHud.buttons >= 9, JSON.stringify(itemHud));
     await shot(v.name + '-5-戰場');
 
-    /* 窄版：打開摘要面板 */
-    if (v.width < 980) {
-      await cdp.eval('window.__probe.click("#b-aside-toggle"); return 1;');
-      await sleep(320);
-      const opened = await cdp.json('({open:document.getElementById("battle-aside").classList.contains("open"),aria:document.getElementById("b-aside-toggle").getAttribute("aria-expanded")})');
-      check(v.name + '：窄版可以拉出操作摘要面板', opened.open && opened.aria === 'true', JSON.stringify(opened));
-      await shot(v.name + '-6-摘要面板');
-      await cdp.eval('window.__probe.click("#b-aside-close"); return 1;');
-      await sleep(250);
-    }
+    /* 各尺寸：打開摘要浮層，不應再壓縮畫布 */
+    await cdp.eval('window.__probe.click("#b-aside-toggle"); return 1;');
+    await sleep(320);
+    const opened = await cdp.json('({open:document.getElementById("battle-aside").classList.contains("open"),aria:document.getElementById("b-aside-toggle").getAttribute("aria-expanded")})');
+    check(v.name + '：操作摘要可以在右側浮層展開', opened.open && opened.aria === 'true', JSON.stringify(opened));
+    await shot(v.name + '-6-摘要面板');
+    await cdp.eval('window.__probe.click("#b-aside-close"); return 1;');
+    await sleep(250);
   }
 
   /* ================= B/C/D. 單機完整一局與設定保存（用平板橫向） ================= */
@@ -472,6 +487,29 @@ async function main() {
   check('單機：在戰場上拖曳可以瞄準（不會直接發射）',
     (aim2.angle !== aim1.angle || aim2.power !== aim1.power) && (await cdp.json('window.__probe.game()')).summary === 0,
     JSON.stringify(aim2));
+
+  /* 戰場同一手勢同時瞄準與蓄力：確認箭頭狀態、游標與放開發射 */
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: Math.round(box.x + box.width * 0.2),
+    y: Math.round(box.y + box.height * 0.4), button: 'left', clickCount: 1, pointerType: 'mouse'
+  });
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: Math.round(box.x + box.width * 0.42),
+    y: Math.round(box.y + box.height * 0.18), button: 'left', pointerType: 'mouse'
+  });
+  await sleep(420);
+  const charging = await cdp.json('({on:window.CatDogApp.charge.on, armed:window.CatDogApp.charge.armed, power:window.CatDogApp.aim.power, cursor:getComputedStyle(document.getElementById("board")).cursor, active:document.body.classList.contains("charge-active")})');
+  check('單機：戰場按住移動會同時瞄準與蓄力，游標會變化',
+    charging.on && charging.armed && charging.power > 10 && charging.cursor === 'grabbing' && charging.active,
+    JSON.stringify(charging));
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: Math.round(box.x + box.width * 0.42),
+    y: Math.round(box.y + box.height * 0.18), button: 'left', clickCount: 1, pointerType: 'mouse'
+  });
+  await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '戰場蓄力射擊完成');
+  check('單機：放開戰場蓄力手勢只發射一發',
+    (await cdp.json('window.__probe.game()')).summary === 1);
+  await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.busy', 12000, '戰場蓄力射擊後輪到玩家');
 
   /* 打完一整局 */
   let shots = 0;
@@ -649,7 +687,7 @@ async function main() {
     narrow.scrollWidth <= 392 && narrow.overflowing.length === 0,
     'scrollWidth=' + narrow.scrollWidth + ' ' + JSON.stringify(narrow.overflowing));
   const narrowStage = await P2.json('window.__probe.stage()');
-  check('線上窄版：聊天室浮動入口沒有蓋住發射鈕', !narrowStage.chatCoversFire);
+  check('線上窄版：聊天室浮動入口沒有蓋住道具 HUD', !narrowStage.chatCoversItems);
   await shot0(P2, '線上-手機直向-對戰');
 
   cleanup();

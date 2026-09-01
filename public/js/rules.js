@@ -37,7 +37,7 @@
     GRAVITY: 320,        // 重力加速度（單位/秒²）
     WIND_ACCEL: 4.5,     // 風力係數：水平加速度 = wind × 這個值
     WIND_MAX: 10,        // 風力絕對值上限
-    POWER_SCALE: 5.8,    // 力道 → 初速：speed = power × 這個值 × 體力係數
+    POWER_SCALE: 8.0,    // 力道 → 初速：speed = power × 這個值 × 體力係數；滿力可跨過整張戰場
     /* 體力係數：滿血是 1.0，血量歸零時只剩這個比例。
      * 受傷越重，同一個力道飛得越近，必須把力道調更大才打得到 —— 
      * 這是完全由血量決定的公開資訊，兩邊與 AI 都算得出同一個值。 */
@@ -60,17 +60,15 @@
     MUZZLE_UP: 34,       // 砲口相對角色腳底的高度
     SELF_SAFE_STEPS: 14, // 前幾步不判定打到自己，免得一出膛就自爆
 
-    HIT_R: 22,           // 直接命中角色的判定半徑
+    HIT_R: 30,           // 直接命中角色的判定半徑；比角色輪廓略寬，降低擦身未中的挫折感
     BODY_H: 30,          // 角色身體中心離腳底的高度（傷害距離用）
 
     BLAST_R: 84,         // 爆炸傷害範圍
     CORE_R: 30,          // 核心範圍內吃滿傷害
-    /* 滿血 100、滿傷 20 → 至少要五發正中才會分出勝負，
-     * 打歪幾次還救得回來，一局大約十幾發，節奏不會太快也不會拖。 */
+    /* 滿血 100、滿傷 20 → 至少要五發正中才會分出勝負，打歪幾次還救得回來。 */
     MAX_DAMAGE: 20,      // 單發最高傷害
 
     MAX_HP: 100,
-    MAX_TURNS: 40,       // 40 回合（雙方各 20 發）還沒分出勝負就比血量
     HEAL_AMOUNT: 30      // 補血道具一次回多少（約等於一發半的直接命中）
   };
 
@@ -98,7 +96,7 @@
     bigbone: {
       key: 'bigbone', label: '大骨頭', icon: '🦴', kind: 'shot',
       note: '砲彈變大一圈，比較容易擦到對手，傷害也更高。',
-      hitR: 1.55, damage: 1.5
+      hitR: 1.4, damage: 1.5
     },
     stink: {
       key: 'stink', label: '臭彈', icon: '💣', kind: 'shot',
@@ -592,7 +590,7 @@
     };
     next.version = state.version + 1;
 
-    /* 勝負判定：先判血量，再判回合上限 */
+    /* 勝負判定：只要血量歸零就結束，沒有總回合上限。 */
     var catDown = next.fighters.cat.hp <= 0;
     var dogDown = next.fighters.dog.hp <= 0;
     if (catDown && dogDown) {
@@ -633,6 +631,35 @@
     next.lastShot = { n: shot.n, side: side, angle: null, power: null, item: null, result: 'pass', damage: shot.damage, distance: null, impact: null };
     next.version = state.version + 1;
     advanceTurn(next, state);
+    return { ok: true, state: next, shot: shot };
+  }
+
+  /** 主動投降：不論目前輪到誰，參賽者都可以結束這一局。 */
+  function applySurrender(state, side, reason) {
+    if (!state) return { ok: false, reason: '目前沒有進行中的對局。' };
+    if (state.over) return { ok: false, reason: '這一局已經結束了。' };
+    if (side !== 'cat' && side !== 'dog') return { ok: false, reason: '不是這場對局的參賽者，無法投降。' };
+
+    var winner = other(side);
+    var next = cloneState(state);
+    var note = reason || (SIDE_LABEL[side] + '主動投降。');
+    var shot = {
+      n: state.turnNo, side: side, angle: null, power: null, wind: state.wind,
+      item: null, result: 'surrender', damage: { cat: 0, dog: 0 },
+      hpAfter: { cat: next.fighters.cat.hp, dog: next.fighters.dog.hp },
+      distance: null, impact: null, points: [], volley: [], flightTime: 0, apex: 0,
+      note: note
+    };
+    next.lastShot = {
+      n: shot.n, side: side, angle: null, power: null, item: null,
+      result: 'surrender', damage: shot.damage, distance: null, impact: null
+    };
+    next.over = true;
+    next.winner = winner;
+    next.reason = note + ' ' + SIDE_LABEL[winner] + '獲勝！';
+    next.version = state.version + 1;
+    next.fighters.cat.mood = winner === 'cat' ? 'win' : 'lose';
+    next.fighters.dog.mood = winner === 'dog' ? 'win' : 'lose';
     return { ok: true, state: next, shot: shot };
   }
 
@@ -678,21 +705,11 @@
     return { ok: true, state: next, shot: shot };
   }
 
-  /** 換手：回合數 +1、換邊、重抽風，並處理回合上限的收尾判定 */
+  /** 換手：回合數 +1、換邊、重抽風；對局只在血量歸零或投降時結束。 */
   function advanceTurn(next, state) {
     next.turnNo = state.turnNo + 1;
     next.turn = other(state.turn);
     next.wind = windFor(state.seed, next.turnNo);
-    if (next.turnNo > CONST.MAX_TURNS) {
-      next.over = true;
-      if (next.fighters.cat.hp === next.fighters.dog.hp) {
-        next.winner = 'draw';
-        next.reason = '打滿 ' + CONST.MAX_TURNS + ' 回合，血量相同，平手！';
-      } else {
-        next.winner = next.fighters.cat.hp > next.fighters.dog.hp ? 'cat' : 'dog';
-        next.reason = '打滿 ' + CONST.MAX_TURNS + ' 回合，' + SIDE_LABEL[next.winner] + '血量比較多，獲勝！';
-      }
-    }
     return next;
   }
 
@@ -763,7 +780,8 @@
     out: '飛出畫面外了',
     timeout: '砲彈不知道飛去哪了',
     pass: '這回合跳過',
-    heal: '補了一口血'
+    heal: '補了一口血',
+    surrender: '主動投降，對手獲勝'
   };
 
   /** 把一發的結果轉成一行中文摘要，前端與伺服器共用同一種說法 */
@@ -771,6 +789,7 @@
     if (!shot) return '';
     var who = SIDE_LABEL[shot.side];
     if (shot.result === 'pass') return '第 ' + shot.n + ' 回合 ' + who + '：' + (shot.note || RESULT_TEXT.pass);
+    if (shot.result === 'surrender') return '第 ' + shot.n + ' 回合 ' + who + '：' + (shot.note || RESULT_TEXT.surrender);
     if (shot.result === 'heal') {
       return '第 ' + shot.n + ' 回合 ' + who + '：用了 ' + ITEMS.heal.icon + ' 補血 → ' +
         (shot.note || RESULT_TEXT.heal) + '（血量 ' + shot.hpAfter[shot.side] + '）';
@@ -824,6 +843,7 @@
     damageAt: damageAt,
     applyShot: applyShot,
     applyPass: applyPass,
+    applySurrender: applySurrender,
     applyHeal: applyHeal,
 
     startingItems: startingItems,

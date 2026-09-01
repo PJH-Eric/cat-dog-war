@@ -191,7 +191,7 @@
 
       <div class="battle-main">
         <header class="battle-top">
-          <button class="btn3d small icononly" data-color="cream" id="b-battle-back" title="離開對局" aria-label="離開對局">◀</button>
+          <button class="btn3d small icononly" data-color="cream" id="b-battle-back" title="離開房間（對局中視為投降）" aria-label="離開房間（對局中視為投降）">◀</button>
 
           <div class="turnbar">
             <span class="chip chip-turn" id="turn-chip" role="status" aria-live="polite">準備中</span>
@@ -224,8 +224,11 @@
         </div>
 
         <div class="stage" id="stage">
-          <canvas id="board" width="1200" height="640" role="img"
-                  aria-label="戰場：左邊是貓咪，右邊是狗狗，中間有一道圍牆"></canvas>
+          <div class="stage-canvas" id="stage-canvas">
+            <canvas id="board" width="1200" height="640" role="img"
+                    aria-label="戰場：左邊是貓咪，右邊是狗狗，中間有一道圍牆"></canvas>
+            <div class="stage-items" id="stage-items" hidden aria-label="雙方剩餘道具"></div>
+          </div>
 
           <!-- 房間等待／結算／訊息都疊在戰場上，聊天室與摘要維持可用 -->
           <div class="stage-overlay" id="stage-overlay" hidden>
@@ -282,11 +285,12 @@
               <button class="stepbtn" id="b-power-up" type="button" aria-label="力道加 1">＋</button>
               <output for="in-power" id="out-power">60</output>
             </div>
-            <button class="btn3d big fire" data-color="peach" id="b-fire" type="button">
+            <button class="btn3d big fire" data-color="peach" id="b-fire" type="button"
+                    aria-label="按一下發射；按住蓄力後放開">
               <span class="ico">🎯</span>發射！
             </button>
           </div>
-          <p class="ctrl-hint" id="ctrl-hint" role="status" aria-live="polite">在戰場上按住不放開始蓄力，移動滑鼠調角度，放開就發射。也可以用下面的滑桿，或鍵盤左右鍵調角度、上下鍵調力道、空白鍵發射。</p>
+          <p class="ctrl-hint" id="ctrl-hint" role="status" aria-live="polite">在戰場上按住並移動可同時瞄準、蓄力，放開就發射；快速點一下只會保留瞄準。也可以用鍵盤微調。</p>
         </div>
       </div>
 
@@ -298,25 +302,13 @@
         <div class="aside-body">
           <div class="sumcard">
             <div class="sum-line"><span>目前回合</span><b id="sum-turn">—</b></div>
-            <div class="sum-line"><span>你的身分</span><b id="sum-role">—</b></div>
             <div class="sum-line"><span>可以做什麼</span><b id="sum-can">—</b></div>
             <div class="sum-line"><span>風向</span><b id="sum-wind">—</b></div>
             <div class="sum-line"><span>血量</span><b id="sum-hp">—</b></div>
-            <div class="sum-line"><span>目前出力</span><b id="sum-force">—</b></div>
             <div class="sum-line"><span>剩餘時間</span><b id="sum-timer">—</b></div>
-            <div class="sum-line"><span>連線狀態</span><b id="sum-net">單機</b></div>
           </div>
 
-          <h4 class="sum-h">這一局的目標</h4>
-          <p class="sum-note">輪流發射，把對方血量打到 0 就贏。中間隔著一道柵欄，地形和站位整局都不會改變，所以同一組角度力道永遠打到同一個點。<b>血量越低，同樣的力道飛得越近</b>，受傷後要記得加大力道。打滿 40 回合還沒分出勝負，血量多的一方獲勝。</p>
-
-          <h4 class="sum-h">道具（開局各一個，用完不補）</h4>
-          <div class="sum-items" id="sum-items">—</div>
-
-          <h4 class="sum-h">房間成員</h4>
-          <div class="sum-members" id="sum-members">單機對戰，沒有其他成員。</div>
-
-          <h4 class="sum-h">每一發的紀錄</h4>
+          <h4 class="sum-h">最近 5 次出手</h4>
           <ol class="sum-list" id="sum-list"></ol>
           <p class="sum-empty" id="sum-empty">還沒有人出手。</p>
         </div>
@@ -393,7 +385,8 @@
           </label>
           <div class="setting-btns">
             <button class="btn3d small" data-color="lemon" id="settings-restart" type="button">🔁 重新開始這一局</button>
-            <button class="btn3d small" data-color="peach" id="settings-quit" type="button">🚪 離開對局</button>
+            <button class="btn3d small" data-color="peach" id="settings-surrender" type="button">🏳️ 投降</button>
+            <button class="btn3d small" data-color="peach" id="settings-quit" type="button">🚪 離開房間</button>
           </div>
           <p class="settings-note" id="settings-game-note">目前沒有進行中的對局。</p>
         </div>

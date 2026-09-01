@@ -1,7 +1,7 @@
 /* ===== 貓狗大戰 — 可愛風主題 =====
  * 版面策略：內容驅動的斷點 + 流動尺寸 + 安全區。
- * 寬版（>=980px 且夠高）＝ 戰場在左、操作摘要固定在右半邊、聊天室釘在戰場左下角；
- * 窄版／直向 ＝ 摘要改成右側可收合面板，聊天室維持左下浮動入口，主要控制永遠不被遮住。
+ * 各尺寸都以戰場為主，操作摘要改成右側可收合浮層、聊天室釘在戰場左下角；
+ * 道具資訊放在畫布天空左右兩側，主要遊戲畫面不再被側欄和控制列壓縮。
  */
 :root{
   --ink:#4A3B55;
@@ -66,6 +66,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .btn3d[disabled]{opacity:.42;cursor:default}
 .btn3d:focus-visible{outline:3px solid var(--sky-d);outline-offset:3px;border-radius:18px}
 .btn3d.big{font-size:1.24rem;padding:17px 30px calc(17px + var(--d));min-height:68px;--d:10px}
+.btn3d.fire{touch-action:none;user-select:none;-webkit-user-select:none}
 .btn3d.small{font-size:.9rem;padding:9px 14px calc(9px + var(--d));min-height:48px;--d:6px}
 .btn3d.icononly{padding:10px 12px calc(10px + var(--d));min-width:52px;min-height:52px;font-size:1.25rem;--d:6px}
 .btn3d .ico{font-size:1.12em}
@@ -210,35 +211,35 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .battle-main{
   position:relative;flex:1 1 auto;min-width:0;min-height:0;
   display:flex;flex-direction:column;
-  padding:calc(6px + var(--safe-t)) 10px calc(8px + var(--safe-b)) calc(10px + var(--safe-l));
+  padding:calc(4px + var(--safe-t)) 8px calc(4px + var(--safe-b)) calc(8px + var(--safe-l));
 }
 
 /* 上排：離開鈕、回合／風向／倒數、摘要開關。右側留白給固定的設定鈕。 */
-.battle-top{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding-right:60px}
+.battle-top{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding-right:112px}
 /* 第二排：兩張血量卡各佔一半，窄畫面也還有空間放頭像、名字與血條 */
-.hpbars{flex:0 0 auto;display:flex;align-items:center;gap:8px;min-width:0;margin-top:6px}
+.hpbars{flex:0 0 auto;display:flex;align-items:center;gap:6px;min-width:0;margin-top:3px}
 .hpcard{
   flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;
-  border:3px solid var(--ink);border-radius:16px;background:#fff;padding:5px 8px;
-  box-shadow:0 4px 0 rgba(74,59,85,.14)
+  border:2px solid var(--ink);border-radius:13px;background:#fff;padding:3px 6px;
+  box-shadow:0 3px 0 rgba(74,59,85,.14)
 }
 .hpcard[data-side=cat]{background:linear-gradient(180deg,#FFF6EC,#FFEBD8)}
 .hpcard[data-side=dog]{background:linear-gradient(180deg,#FBF4EA,#F0E4D2)}
 .hpcard.turn{border-color:var(--grape-t);box-shadow:0 4px 0 var(--grape-d)}
 .hpcard.down{opacity:.6}
-.hpface{flex:0 0 auto;width:36px;height:36px}
+.hpface{flex:0 0 auto;width:29px;height:29px}
 .hpface svg{width:100%;height:100%;display:block}
-.hpinfo{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
-.hpname{font-size:.82rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hpbar{display:block;height:12px;border:2px solid var(--ink);border-radius:999px;background:#F0E9F6;overflow:hidden}
+.hpinfo{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.hpname{font-size:.75rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hpbar{display:block;height:9px;border:2px solid var(--ink);border-radius:999px;background:#F0E9F6;overflow:hidden}
 .hpbar i{display:block;height:100%;background:linear-gradient(180deg,#9BE3C2,#5FBF95);transition:width .4s ease}
 .hpbar i.low{background:linear-gradient(180deg,#FFC9A0,#F0913F)}
 .hpbar i.crit{background:linear-gradient(180deg,#FFA0AC,#D2444F)}
-.hpnum{flex:0 0 auto;font-weight:900;font-variant-numeric:tabular-nums;min-width:2.2em;text-align:right}
-.hpvs{flex:0 0 auto;font-weight:900;color:var(--grape-t);font-size:.85rem}
+.hpnum{flex:0 0 auto;font-size:.9rem;font-weight:900;font-variant-numeric:tabular-nums;min-width:2.2em;text-align:right}
+.hpvs{flex:0 0 auto;font-weight:900;color:var(--grape-t);font-size:.76rem}
 
 /* 回合／風向／倒數：擠不下時自己換行，不會把左右兩顆按鈕推出畫面 */
-.turnbar{flex:1 1 auto;min-width:0;display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap}
+.turnbar{flex:1 1 auto;min-width:0;display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:wrap}
 .chip{
   display:inline-flex;align-items:center;gap:6px;
   border:3px solid var(--ink);border-radius:999px;background:#fff;
@@ -252,17 +253,51 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .chip-wind .windsvg svg{width:100%;height:100%;display:block}
 .chip-timer{background:var(--lemon)}
 .chip-timer[data-urgent=true]{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
+.aside-toggle{position:absolute;z-index:71;top:calc(4px + var(--safe-t));right:calc(70px + var(--safe-r))}
 
 /* 戰場畫布 */
 .stage{
   position:relative;flex:1 1 auto;min-height:0;
   display:flex;align-items:center;justify-content:center;
 }
+.stage-canvas{position:relative;flex:0 0 auto;display:block}
 .stage canvas{
   display:block;border:3px solid var(--ink);border-radius:18px;
   box-shadow:0 6px 0 rgba(74,59,85,.16);background:#EAF6FF;
-  touch-action:none;
+  touch-action:none;cursor:crosshair;
 }
+body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
+
+/* 畫布天空中的雙方道具 HUD：兩邊都看得到，只有自己的按鈕可以操作。 */
+.stage-items{
+  position:absolute;inset:0;z-index:20;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  gap:8px;padding:8px 10px;pointer-events:none;
+}
+.stage-item-panel{
+  flex:0 1 200px;min-width:0;padding:4px;
+  border:2px solid var(--ink);border-radius:13px;
+  background:rgba(255,253,248,.86);box-shadow:0 4px 0 rgba(74,59,85,.18);
+  backdrop-filter:blur(2px);pointer-events:auto;
+}
+.stage-item-panel[data-side=cat]{background:rgba(255,240,222,.9)}
+.stage-item-panel[data-side=dog]{background:rgba(242,232,216,.9)}
+.stage-item-head{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:0 3px 3px}
+.stage-item-head b{font-size:.72rem;white-space:nowrap}
+.stage-item-head span{font-size:.62rem;font-weight:800;color:var(--ink-soft);white-space:nowrap}
+.stage-item-list{display:flex;flex-wrap:wrap;gap:3px}
+.stage-item-btn{
+  flex:1 0 36px;min-width:36px;height:40px;padding:3px 4px;
+  display:inline-flex;align-items:center;justify-content:center;gap:2px;
+  border:2px solid var(--line);border-radius:9px;background:rgba(255,255,255,.86);
+  color:var(--ink);font:inherit;cursor:pointer;pointer-events:auto;
+}
+.stage-item-btn .ico{font-size:.95rem;line-height:1}
+.stage-item-btn .num{font-size:.67rem;font-weight:900;font-variant-numeric:tabular-nums}
+.stage-item-btn.selected{border-color:var(--grape-d);background:var(--grape);box-shadow:0 0 0 2px rgba(164,143,219,.28)}
+.stage-item-btn.used{opacity:.4}
+.stage-item-btn:disabled{cursor:default}
+.stage-item-btn:focus-visible{outline:3px solid var(--sky-d);outline-offset:2px}
 
 /* 疊在戰場上的卡片：房間等待、結算、錯誤 */
 .stage-overlay{
@@ -377,34 +412,31 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .ctrl-hint[data-kind=error]{color:var(--danger)}
 .ctrl-hint[data-kind=ok]{color:var(--ok)}
 
-/* 右半邊操作摘要 */
+/* 右側操作摘要浮層：不佔用戰場寬度，打開時才覆蓋右側。 */
 .battle-aside{
-  flex:0 0 clamp(300px,32%,420px);min-height:0;
+  position:fixed;top:0;right:0;bottom:0;z-index:80;
+  width:min(78vw,300px);min-height:0;
   display:flex;flex-direction:column;
   border-left:3px solid var(--line);background:rgba(255,253,248,.92);
   padding-top:var(--safe-t);padding-right:var(--safe-r);padding-bottom:var(--safe-b);
+  box-shadow:-8px 0 0 rgba(74,59,85,.14);
+  transform:translateX(102%);transition:transform .22s ease;
 }
+.battle-aside.open{transform:translateX(0)}
 .aside-head{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:3px solid var(--line)}
 .aside-head h3{flex:1;margin:0;font-size:1.02rem;color:var(--grape-t)}
-.aside-close{display:none;width:38px;height:38px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
-.aside-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:10px 12px 16px}
+.aside-close{display:block;width:38px;height:38px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
+.aside-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px 9px 12px}
 .sumcard{border:3px solid var(--line);border-radius:16px;background:#fff;padding:7px 10px}
-.sum-line{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:2px dashed var(--line);font-size:.83rem}
+.sum-line{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:2px dashed var(--line);font-size:.78rem}
 .sum-line:last-child{border-bottom:0}
 .sum-line span{flex:0 0 auto;color:var(--ink-soft);font-weight:800}
 .sum-line b{flex:1 1 auto;text-align:right;font-weight:900;overflow-wrap:anywhere}
-.sum-h{margin:14px 2px 6px;font-size:.9rem;color:var(--grape-t)}
-.sum-note{margin:0 2px;font-size:.79rem;line-height:1.65;color:var(--ink-soft)}
-.sum-members{font-size:.8rem;line-height:1.6;color:var(--ink-soft);font-weight:700}
-.sum-members .mm{display:flex;align-items:center;gap:6px;padding:3px 0}
-.sum-members .mm .tag{border:2px solid var(--ink-soft);border-radius:999px;padding:0 7px;font-size:.68rem;font-weight:900}
-.sum-members .mm .tag[data-r=player]{border-color:var(--grape-d);background:var(--grape)}
-.sum-members .mm .tag[data-r=spectator]{border-color:var(--sky-d);background:var(--sky)}
-.sum-members .mm .off{color:var(--danger);font-size:.72rem;font-weight:900}
+.sum-h{margin:10px 2px 5px;font-size:.84rem;color:var(--grape-t)}
 .sum-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
 .sum-list li{
   border:2px solid var(--line);border-radius:12px;background:#fff;padding:6px 9px;
-  font-size:.78rem;line-height:1.55;
+  font-size:.72rem;line-height:1.4;
 }
 .sum-list li[data-side=cat]{border-left:7px solid var(--cat-d)}
 .sum-list li[data-side=dog]{border-left:7px solid var(--dog-d)}
@@ -412,6 +444,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .sum-list li .sl-head{font-weight:900;display:flex;justify-content:space-between;gap:8px}
 .sum-list li .sl-body{color:var(--ink-soft);font-weight:700}
 .sum-empty{margin:8px 2px;font-size:.79rem;color:var(--ink-soft)}
+
+/* 下方滑桿列保留在 DOM 給相容性與鍵盤邏輯使用，視覺操作改由戰場手勢完成。 */
+.controls{display:none!important}
 
 /* ---------- 提示 toast ---------- */
 .toast{
@@ -424,8 +459,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 }
 .toast[data-kind=error]{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
 .toast[data-kind=ok]{background:#E4F6EC;border-color:var(--mint-d)}
-/* 戰場的提示浮在控制列正上方（--controls-h 由 app.js 量好寫進來），
-   既不會壓到角度／力道／發射鈕，也不會蓋掉上方的血量與回合資訊。 */
+/* 戰場提示若出現，靠近畫面底部但不壓縮畫布。 */
 #s-battle.active ~ .toast{bottom:calc(var(--safe-b) + var(--controls-h,120px) + 16px)}
 
 /* ================================================================
@@ -530,22 +564,15 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
    RWD：內容驅動的斷點
    ================================================================ */
 
-/* 窄於 980px（手機、平板直向）：摘要改成右側可收合面板 */
+/* 窄版把摘要浮層縮窄，避免打開後遮住太多戰場 */
 @media (max-width:979px){
   .battle-aside{
-    position:fixed;top:0;right:0;bottom:0;z-index:80;
-    width:min(90vw,400px);flex:none;
-    border-left:3px solid var(--ink);background:var(--paper);
-    box-shadow:-8px 0 0 rgba(74,59,85,.14);
-    transform:translateX(102%);transition:transform .22s ease;
+    width:min(86vw,320px);
   }
-  .battle-aside.open{transform:translateX(0)}
-  .aside-close{display:block}
   .battle-main{padding-right:calc(10px + var(--safe-r))}
 }
-/* 夠寬時不需要開關鈕，摘要一直在 */
+/* 夠寬時也讓摘要維持浮層，戰場可以吃滿剩餘寬度 */
 @media (min-width:980px){
-  .aside-toggle{display:none}
   .battle-main{padding-right:6px}
 }
 
@@ -567,7 +594,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 /* 橫向且高度很矮（手機橫向）：把裝飾與留白壓到最低，先保住戰場與控制 */
 @media (orientation:landscape) and (max-height:520px){
   .battle-main{padding-top:calc(4px + var(--safe-t));padding-bottom:calc(4px + var(--safe-b))}
-  .battle-top{gap:6px;padding-right:56px}
+  .battle-top{gap:6px;padding-right:112px}
   .hpface{width:28px;height:28px}
   .hpname{font-size:.72rem}
   .hpbar{height:10px}
@@ -590,11 +617,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   .logo{max-width:360px}
 }
 
-/* 大桌機：讓摘要再寬一點，字大一點 */
+/* 大桌機：摘要只保留一個窄浮層，避免搶走遊戲焦點 */
 @media (min-width:1440px){
-  .battle-aside{flex:0 0 clamp(340px,28%,460px)}
-  .sum-line{font-size:.88rem}
-  .sum-list li{font-size:.82rem}
+  .battle-aside{width:min(22vw,320px)}
 }
 
 /* ============================ 道具列與蓄力條 ============================ */
@@ -645,6 +670,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   .itemchip{padding:8px;gap:3px;font-size:.8rem}
   .itemchip .txt{display:none}
   .itemheal .b3-lbl .txt{display:none}
+  .stage-items{padding:6px}
+  .stage-item-panel{flex-basis:47%;padding:3px}
+  .stage-item-head{padding-bottom:2px}
+  .stage-item-head b{font-size:.64rem}
+  .stage-item-head span{font-size:.56rem}
+  .stage-item-btn{min-width:36px;height:40px;padding:3px 4px}
+  .stage-item-btn .ico{font-size:.82rem}
+  .stage-item-btn .num{font-size:.6rem}
 }
 
 /* 橫向矮視窗：控制列要盡量矮，把高度留給戰場 */

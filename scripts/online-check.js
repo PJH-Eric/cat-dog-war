@@ -17,7 +17,7 @@
  *   8. 邀請連結撤銷後失效、過期的連結被拒絕、房號不存在的處理
  *   9. 房間滿了之後想當玩家的人被明確降為觀戰
  *  10. 斷線重連可以回到原本的座位
- *  11. 再來一局、離開房間
+ *  11. 再來一局、主動投降、投降後再開局、離開房間視同投降
  */
 'use strict';
 
@@ -462,7 +462,29 @@ async function main() {
     check('雙方都同意後開始新的一局', host.view.room.phase === 'playing' && host.view.room.summary.length === 0);
     check('新的一局換了新地圖', host.view.game.turnNo === 1);
 
-    /* ---- 12. 斷線重連回到原座位 ---- */
+    /* ---- 12. 主動投降 ---- */
+    const surrenderSide = host.view.you.side;
+    const surrenderer = surrenderSide === 'cat' ? host : guest;
+    surrenderer.send('room:surrender');
+    await Promise.all([
+      host.until((v) => v.room.phase === 'finished' && v.game && v.game.over, '房主看到投降結算'),
+      guest.until((v) => v.room.phase === 'finished' && v.game && v.game.over, '客人看到投降結算'),
+      watcher.until((v) => v.room.phase === 'finished' && v.game && v.game.over, '觀戰者看到投降結算')
+    ]);
+    const surrenderSummary = host.view.room.summary[host.view.room.summary.length - 1];
+    check('玩家可以主動投降且對手獲勝',
+      host.view.game.winner === Rules.other(surrenderSide) && surrenderSummary && surrenderSummary.result === 'surrender',
+      JSON.stringify(host.view.game));
+    check('投降後不再能出手或再次投降',
+      host.view.you.can.surrender === false && guest.view.you.can.surrender === false && watcher.view.you.can.surrender === false,
+      JSON.stringify(host.view.you.can));
+
+    host.send('room:rematch');
+    guest.send('room:rematch');
+    await host.until((v) => v.room.phase === 'playing', '投降後再來一局開始');
+    check('投降後雙方仍可重新開局', host.view.room.phase === 'playing' && host.view.game.turnNo === 1);
+
+    /* ---- 13. 斷線重連回到原座位 ---- */
     const guestSide = guest.view.you.side;
     guest.close();
     await sleep(400);
@@ -474,7 +496,7 @@ async function main() {
     check('重連後座位還在原本那一邊', reconnected.view.you.side === guestSide,
       reconnected.view.you.side + ' vs ' + guestSide);
 
-    /* ---- 13. 對局中離開＝棄權 ---- */
+    /* ---- 14. 對局中離開＝棄權 ---- */
     reconnected.send('room:leave');
     await host.until((v) => v.game && v.game.over, '對手離開後對局結束');
     check('對局中離開房間等於棄權，對手獲勝',
@@ -482,7 +504,7 @@ async function main() {
       host.view.game.reason);
     reconnected.close();
 
-    /* ---- 14. 離開房間 ---- */
+    /* ---- 15. 離開房間 ---- */
     host.send('room:leave');
     watcher.send('room:leave');
     await sleep(400);

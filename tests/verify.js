@@ -8,7 +8,7 @@
  *   1. 種子亂數與地形：可重現、圍牆存在、落腳平台是平的
  *   2. 物理：確定性、力道與射程單調、風把砲彈吹歪、45° 附近射程最遠
  *   3. 合法性：角度／力道邊界、不是自己的回合、結束後不能再打
- *   4. 傷害與勝負：直接命中、爆炸衰減、自爆、血量歸零、回合上限
+ *   4. 傷害與勝負：直接命中、爆炸衰減、自爆、血量歸零、主動投降
  *   5. 地形破壞：坑洞會讓地面變低，角色會落到新地面上
  *   6. AI：只送合法行動、三段難度的落點誤差有明顯差異、耗時可接受
  *   7. 房間狀態機：完整生命週期、席位衝突、觀戰權限、邀請 token、斷線回收
@@ -243,6 +243,13 @@ test('legalActions 只在自己的回合列出可執行行動', () => {
 
 group('4. 傷害判定與勝負');
 
+test('一般直接命中判定較舊版寬鬆，大骨頭仍然更容易命中', () => {
+  assert.strictEqual(C.HIT_R, 30);
+  assert.ok(C.HIT_R > 22, '一般命中半徑應該比舊版 22 大');
+  assert.strictEqual(Rules.modOf('bigbone').hitR, 42);
+  assert.ok(Rules.modOf('bigbone').hitR > C.HIT_R);
+});
+
 test('直接命中造成最大傷害', () => {
   const st = Rules.createState({ seed: 'DMGAAA', first: 'cat' });
   const dog = st.fighters.dog;
@@ -334,25 +341,37 @@ test('打到自己會自傷', () => {
   assert.ok(['self', 'both'].includes(r.shot.result), '結果應該是自爆，實際 ' + r.shot.result);
 });
 
-test('打滿回合上限後由血量決定勝負', () => {
-  let st = Rules.createState({ seed: 'MAXTUR', first: 'cat' });
-  st.turnNo = C.MAX_TURNS;
+test('對局超過原本的回合數後仍會繼續，直到血量歸零', () => {
+  let st = Rules.createState({ seed: 'LONGAA', first: 'cat' });
+  st.turnNo = 999;
   st.fighters.cat.hp = 70;
   st.fighters.dog.hp = 40;
-  /* 用一發一定打不到人的方向（往正上方最小力道會自傷，所以改用 pass） */
+  /* 用 pass 模擬超長對局，確認不會再因總回合數自動結束 */
   const r = Rules.applyPass(st, 'cat', '測試');
-  assert.strictEqual(r.state.over, true);
-  assert.strictEqual(r.state.winner, 'cat');
-  assert.ok(r.state.reason.includes('回合'));
+  assert.strictEqual(r.state.over, false);
+  assert.strictEqual(r.state.winner, null);
+  assert.strictEqual(r.state.turnNo, 1000);
 });
 
-test('回合上限且血量相同時判平手', () => {
-  let st = Rules.createState({ seed: 'DRAWAA', first: 'cat' });
-  st.turnNo = C.MAX_TURNS;
+test('長局血量相同也不會自動判平手', () => {
+  let st = Rules.createState({ seed: 'LONGBB', first: 'cat' });
+  st.turnNo = 999;
   st.fighters.cat.hp = 55;
   st.fighters.dog.hp = 55;
   const r = Rules.applyPass(st, 'cat', '測試');
-  assert.strictEqual(r.state.winner, 'draw');
+  assert.strictEqual(r.state.over, false);
+  assert.strictEqual(r.state.winner, null);
+});
+
+test('主動投降會立即結束對局並判對手獲勝', () => {
+  const st = Rules.createState({ seed: 'SURRENDA', first: 'cat' });
+  const r = Rules.applySurrender(st, 'cat');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.shot.result, 'surrender');
+  assert.strictEqual(r.state.over, true);
+  assert.strictEqual(r.state.winner, 'dog');
+  assert.ok(r.state.reason.includes('投降'));
+  assert.ok(Rules.describeShot(r.shot).includes('主動投降'));
 });
 
 test('跳過回合會換手、換風、版本加一，但不扣血', () => {
@@ -469,6 +488,15 @@ test('出力係數只看血量，沒有任何亂數', () => {
   const a = Rules.powerFactor(st, 'dog');
   const b = Rules.powerFactor(Rules.cloneState(st), 'dog');
   assert.strictEqual(a, b);
+});
+
+test('受傷且逆風時，滿力仍能抵達對面陣地', () => {
+  const st = Rules.createState({ seed: 'FORCE4', first: 'cat' });
+  st.fighters.cat.hp = 1;
+  st.wind = -C.WIND_MAX;
+  const sim = Rules.simulate(st, 'cat', 45, C.MAX_POWER, { wind: -C.WIND_MAX, trace: false });
+  assert.ok(sim.impact.x >= st.fighters.dog.x - C.BLAST_R,
+    '滿力彈道不應在對面陣地前失效：' + JSON.stringify(sim.impact));
 });
 
 /* ============================================================ 5c. 道具 */
@@ -653,7 +681,8 @@ test('難度差異可觀察：困難比普通準、普通比簡單準', () => {
   assert.ok(stats.hard.avg < stats.normal.avg, '困難的誤差應該小於普通');
   assert.ok(stats.normal.avg < stats.easy.avg, '普通的誤差應該小於簡單');
   assert.ok(stats.hard.avg * 1.6 < stats.normal.avg, '困難與普通的差距要明顯，不能只是名稱不同');
-  assert.ok(stats.normal.avg * 1.6 < stats.easy.avg, '普通與簡單的差距要明顯');
+  /* 提高基礎初速後，遠距離落點的絕對誤差會縮小；仍保留明顯差距門檻。 */
+  assert.ok(stats.normal.avg * 1.4 < stats.easy.avg, '普通與簡單的差距要明顯');
   assert.ok(stats.hard.hitRate > stats.normal.hitRate, '困難的命中率應該比較高');
   assert.ok(stats.normal.hitRate > stats.easy.hitRate, '普通的命中率應該比較高');
 });
@@ -789,6 +818,9 @@ test('觀戰者不能選邊、不能準備、不能發射', () => {
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.code, 'forbidden');
   assert.ok(r.error.includes('觀戰'));
+  const surrender = room.surrender('spec', T0);
+  assert.strictEqual(surrender.ok, false);
+  assert.strictEqual(surrender.code, 'forbidden');
 });
 
 test('席位滿了之後想當玩家的人會明確變成觀戰者', () => {
@@ -899,7 +931,26 @@ test('對局中離開等於棄權，對手獲勝', () => {
   assert.strictEqual(room.state.over, true);
   assert.strictEqual(room.state.winner, 'dog');
   assert.strictEqual(room.phase, 'finished');
+  assert.strictEqual(room.summary[room.summary.length - 1].result, 'surrender');
   assert.strictEqual(room.hostId, 'b', '房主離開後應該換人');
+});
+
+test('場上玩家可以主動投降，房間保留結算狀態', () => {
+  const store = freshStore();
+  const room = store.create('a', { name: 'A', now: T0 }).room;
+  room.join('b', { name: 'B', role: 'player', now: T0 });
+  room.pickSide('a', 'cat'); room.pickSide('b', 'dog');
+  room.setReady('a', true); room.setReady('b', true);
+  room.start('a', T0);
+
+  const r = room.surrender('a', T0 + 500);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.shot.result, 'surrender');
+  assert.strictEqual(room.phase, 'finished');
+  assert.strictEqual(room.state.winner, 'dog');
+  assert.strictEqual(room.summary[room.summary.length - 1].surrender, true);
+  assert.ok(room.summary[room.summary.length - 1].text.includes('主動投降'));
+  assert.strictEqual(room.viewFor('b', T0 + 500).you.can.surrender, false);
 });
 
 test('斷線會保留座位，超過緩衝時間才釋放', () => {

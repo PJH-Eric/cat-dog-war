@@ -14,7 +14,7 @@
   var WORLD = Rules.WORLD;
   var C = Rules.CONST;
 
-  var canvas = null, ctx = null, stage = null;
+  var canvas = null, ctx = null, stage = null, canvasWrap = null;
   var scale = 1, cssW = 0, cssH = 0, dpr = 1;
 
   var state = null;
@@ -121,6 +121,10 @@
     cssW = Math.round(WORLD.W * s);
     cssH = Math.round(Math.min(availH, VIEW_H_MAX * s));
     dpr = Math.min(2.5, w.devicePixelRatio || 1);
+    if (canvasWrap) {
+      canvasWrap.style.width = cssW + 'px';
+      canvasWrap.style.height = cssH + 'px';
+    }
     canvas.style.width = cssW + 'px';
     canvas.style.height = cssH + 'px';
     canvas.width = Math.round(cssW * dpr);
@@ -417,13 +421,30 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.beginPath();
-    ctx.arc(sx(x1), sy(y1), Math.max(4, (5 + aim.power / 14) * scale), 0, Math.PI * 2);
-    ctx.fill();
     ctx.strokeStyle = '#4A3B55';
     ctx.lineWidth = Math.max(1.5, 2.5 * scale);
-    ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle;
+    if (charge.on) {
+      /* 蓄力時用箭頭指向預計落點，比圓點更容易看出發射方向。 */
+      var tipX = sx(x1), tipY = sy(y1);
+      var ux = f.dir * Math.cos(rad), uy = -Math.sin(rad);
+      var px = -uy, py = ux;
+      var tip = Math.max(9, (12 + aim.power / 12) * scale);
+      var back = tip * 1.65, half = tip * 0.72;
+      var baseX = tipX - ux * back, baseY = tipY - uy * back;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(baseX + px * half, baseY + py * half);
+      ctx.lineTo(baseX - px * half, baseY - py * half);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(sx(x1), sy(y1), Math.max(4, (5 + aim.power / 14) * scale), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -452,7 +473,7 @@
     var side = anim.shot.side;
     var mod = Rules.modOf(anim.shot.item);
     /* 大骨頭的判定半徑真的比較大，畫面上就要真的比較大顆 */
-    var size = 30 * mod.scale * scale;
+    var size = 38 * mod.scale * scale;
     var spin = reduceMotion ? 0 : anim.i * 0.22;
     ctx.save();
     ctx.translate(sx(p.x), sy(p.y));
@@ -711,6 +732,7 @@
   function attach(canvasEl, stageEl) {
     canvas = canvasEl;
     stage = stageEl;
+    canvasWrap = canvas.parentElement;
     ctx = canvas.getContext('2d');
     if (w.ResizeObserver) new ResizeObserver(function () { resize(); }).observe(stage);
     /* ResizeObserver 的通知綁在「更新畫面」那一步，分頁在背景時不會送達，

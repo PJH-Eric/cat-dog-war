@@ -349,6 +349,16 @@ io.on('connection', (socket) => {
     scheduleAi(room);
   }));
 
+  socket.on('room:surrender', withRoom((room) => {
+    const m = room.member(socket.data.clientId);
+    const res = room.surrender(socket.data.clientId, now());
+    if (!res.ok) return fail(socket, res.error, res.code);
+    clearAiTimer(room.code);
+    room.system(m.name + ' 主動投降，' + Rules.SIDE_LABEL[res.state.winner] + '獲勝。', now());
+    syncRoom(room);
+    syncLobby();
+  }));
+
   socket.on('room:rematch', withRoom((room) => {
     const res = room.voteRematch(socket.data.clientId, now());
     if (!res.ok) return fail(socket, res.error, res.code);
