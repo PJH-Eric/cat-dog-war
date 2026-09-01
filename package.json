@@ -1,0 +1,25 @@
+{
+  "name": "cat-dog-war",
+  "version": "1.0.0",
+  "description": "貓狗大戰 - 可愛風拋物線砲擊對戰（單機三段 AI、線上房間對戰、觀戰、邀請連結、聊天室與操作摘要）",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/verify.js",
+    "test:online": "node scripts/online-check.js",
+    "verify": "node tests/verify.js && node scripts/online-check.js",
+    "inject": "node scripts/inject-server-url.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,24 @@
+# Render 藍圖：在 Render 選 "New > Blueprint"、指到這個 repo 就能一鍵部署。
+# 免費方案支援 WebSocket（Socket.IO），但閒置約 15 分鐘會休眠，
+# 第一次連線需要等十幾秒喚醒；房間只存在記憶體，服務重啟房間就會消失。
+services:
+  - type: web
+    name: cat-dog-war
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # 允許連線的前端來源，逗號分隔。
+      # 前端和伺服器都在這個服務上時可以留 *；
+      # 若前端另外放在 GitHub Pages 之類的地方，請填那個網址。
+      - key: GAME_ALLOWED_ORIGIN
+        sync: false
+      # 每回合的思考時間（毫秒）。超過伺服器會自動跳過那一回合。
+      - key: ROOM_TURN_MS
+        value: "90000"

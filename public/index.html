@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#F4EEFF">
+<meta name="description" content="可愛風貓狗大戰：調角度、抓力道、看風向，毛線球對骨頭的拋物線砲擊對戰。支援單機三段電腦難度與跨電腦線上對戰、觀戰與聊天室。">
+<title>貓狗大戰</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='6' y='6' width='88' height='88' rx='20' fill='%23FFF6E6'/%3E%3Cpath d='M22 40 L16 14 L44 30 Z' fill='%23FFE0C2' stroke='%234A3B55' stroke-width='6' stroke-linejoin='round'/%3E%3Cpath d='M78 40 L84 14 L56 30 Z' fill='%23E3CBAE' stroke='%234A3B55' stroke-width='6' stroke-linejoin='round'/%3E%3Crect x='14' y='32' width='72' height='52' rx='24' fill='%23FFE9D6' stroke='%234A3B55' stroke-width='6'/%3E%3Ccircle cx='38' cy='56' r='6' fill='%234A3B55'/%3E%3Ccircle cx='62' cy='56' r='6' fill='%234A3B55'/%3E%3Cpath d='M42 68 q8 8 16 0' stroke='%234A3B55' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="bgdeco" aria-hidden="true"></div>
+
+<div id="app">
+
+  <!-- 右上角固定設定入口：所有畫面共用同一顆按鈕，位置在安全區內 -->
+  <button class="btn3d icononly settings-fab" data-color="cream" id="b-settings" type="button"
+          title="開啟遊戲設定" aria-label="開啟遊戲設定" aria-haspopup="dialog"
+          aria-controls="settings-modal" aria-expanded="false">⚙</button>
+
+  <!-- ============================== 主選單 ============================== -->
+  <section class="screen flexcenter active" id="s-home" aria-label="主選單">
+    <div class="home-wrap">
+      <div class="logo" id="logo"></div>
+      <div class="home-btns">
+        <button class="btn3d big" data-color="mint" id="b-solo"><span class="ico">🐾</span>單機對戰（打電腦）</button>
+        <button class="btn3d big" data-color="grape" id="b-online"><span class="ico">🌐</span>線上對戰（找朋友）</button>
+        <div class="home-row">
+          <button class="btn3d" data-color="sky" id="b-help"><span class="ico">📖</span>玩法教學</button>
+          <button class="btn3d" data-color="lemon" id="b-stats"><span class="ico">🏅</span>我的戰績</button>
+        </div>
+      </div>
+      <p class="home-note" id="home-note">一隻貓、一隻狗，隔著一道圍牆丟毛線球和骨頭。調好角度和力道，先把對方打趴的就贏了。</p>
+    </div>
+  </section>
+
+  <!-- ============================== 單機設定 ============================== -->
+  <section class="screen" id="s-solo" aria-label="單機對戰設定">
+    <div class="panel">
+      <div class="panel-head">
+        <button class="btn3d small" data-color="cream" data-back="s-home">◀ 返回</button>
+        <h2>單機對戰</h2>
+        <span class="spacer"></span>
+      </div>
+
+      <h3 class="lbl">你要當哪一邊？</h3>
+      <div class="sidepick" id="opt-side" role="radiogroup" aria-label="選擇你的角色">
+        <button class="sidecard" data-v="cat" type="button" role="radio" aria-checked="true">
+          <span class="sideface" data-face="cat"></span>
+          <b>貓咪</b>
+          <span class="s">站在左邊，丟毛線球</span>
+        </button>
+        <button class="sidecard" data-v="dog" type="button" role="radio" aria-checked="false">
+          <span class="sideface" data-face="dog"></span>
+          <b>狗狗</b>
+          <span class="s">站在右邊，丟骨頭</span>
+        </button>
+      </div>
+
+      <h3 class="lbl">電腦對手的難度</h3>
+      <div class="diff-row" id="opt-diff" role="radiogroup" aria-label="電腦難度">
+        <button class="optcard" data-v="easy" type="button" role="radio" aria-checked="false">
+          <b>簡單</b><span class="s">新手練習</span>
+          <span class="t">不會試算彈道，直接用公式抓力道，而且完全不看風向，常常打歪。</span>
+        </button>
+        <button class="optcard" data-v="normal" type="button" role="radio" aria-checked="true">
+          <b>普通</b><span class="s">勢均力敵</span>
+          <span class="t">會粗略試算幾十種角度與力道，也補償一部分風力，偶爾會失手。</span>
+        </button>
+        <button class="optcard" data-v="hard" type="button" role="radio" aria-checked="false">
+          <b>困難</b><span class="s">很難纏</span>
+          <span class="t">用跟你完全一樣的物理引擎試算數百種組合、完整補償風向，幾乎每發都很準。</span>
+        </button>
+      </div>
+      <p class="hint-note">三種難度用的是同一套規則和同一個物理引擎，電腦不會偷看資訊也不會偷改傷害；差別只在它算得多細、補償多少風、手抖多大。</p>
+
+      <h3 class="lbl">地圖種子（選填）</h3>
+      <div class="seed-row">
+        <input id="seed-input" maxlength="12" autocomplete="off" spellcheck="false"
+               placeholder="留白＝隨機地形" aria-label="地圖種子，留白代表隨機地形">
+        <button class="btn3d small" data-color="cream" id="b-seed-random" type="button">🎲 換一組</button>
+      </div>
+      <p class="hint-note">同一組種子會生出同一張地形和同一串風向，方便跟朋友比同一張地圖。只認得 A–Z 與 2–9，不含容易看錯的 0、1、I、O。</p>
+
+      <div class="panel-foot">
+        <button class="btn3d big" data-color="grape" id="b-solo-start">開打！ ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 玩法教學（純文字） ============================== -->
+  <section class="screen" id="s-help" aria-label="玩法教學">
+    <div class="panel">
+      <div class="panel-head">
+        <button class="btn3d small" data-color="cream" data-back="s-home">◀ 返回</button>
+        <h2>玩法教學</h2>
+        <span class="spacer"></span>
+      </div>
+
+      <p class="tut-progress" id="tut-progress" role="status" aria-live="polite">第 1 段 / 共 6 段</p>
+      <div class="tut-box" id="tut-box" tabindex="-1"></div>
+
+      <div class="tut-nav">
+        <button class="btn3d small" data-color="cream" id="b-tut-prev">◀ 上一段</button>
+        <button class="btn3d small" data-color="lemon" id="b-tut-skip">跳過教學</button>
+        <button class="btn3d small" data-color="mint" id="b-tut-next">下一段 ▶</button>
+      </div>
+
+      <div class="panel-foot">
+        <button class="btn3d" data-color="grape" id="b-tut-practice">立即練習（打簡單電腦）</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 我的戰績 ============================== -->
+  <section class="screen" id="s-stats" aria-label="我的戰績">
+    <div class="panel">
+      <div class="panel-head">
+        <button class="btn3d small" data-color="cream" data-back="s-home">◀ 返回</button>
+        <h2>我的戰績</h2>
+        <span class="spacer"></span>
+      </div>
+      <div class="statgrid" id="statgrid"></div>
+      <p class="hint-note">戰績只存在這台裝置的瀏覽器裡，不會上傳，也不會跟別人共用。清除瀏覽器資料就會歸零。</p>
+    </div>
+  </section>
+
+  <!-- ============================== 線上大廳 ============================== -->
+  <section class="screen" id="s-lobby" aria-label="線上大廳">
+    <div class="panel">
+      <div class="panel-head">
+        <button class="btn3d small" data-color="cream" data-back="s-home">◀ 返回</button>
+        <h2>🌐 線上大廳</h2>
+        <span class="spacer"></span>
+      </div>
+
+      <!-- 沒有伺服器時：講清楚原因與怎麼開，不做假的房間列表 -->
+      <div class="lobby-off" id="lobby-off" hidden>
+        <div class="state-face" aria-hidden="true">🔌</div>
+        <h3 id="lobby-off-title">目前連不到遊戲伺服器</h3>
+        <p id="lobby-off-note">線上對戰需要一台開著的伺服器。單機對戰完全不受影響，可以直接玩。</p>
+        <details class="lobby-help">
+          <summary>要怎麼開啟線上對戰？</summary>
+          <div>
+            <p>1. 自己跑一台：在電腦上執行 <code>npm start</code>（或雙擊「啟動遊戲.bat」），畫面會印出這台電腦的區網網址，例如 <code>http://192.168.1.20:3020</code>。同一個 Wi-Fi 的另一台電腦直接用瀏覽器開那個網址就能一起玩。</p>
+            <p>2. 部署到雲端：把整個專案推到 Git，用 Render 之類的免費方案部署，兩台不同網路的電腦就都能連。</p>
+            <p>3. 前端和伺服器不在同一台時，用 <code>?server=（伺服器網址）</code> 指定，例如 <code>index.html?server=https://你的服務網址</code>。</p>
+            <p>詳細步驟寫在專案的 README。</p>
+          </div>
+        </details>
+        <div class="state-btns">
+          <button class="btn3d" data-color="mint" id="b-lobby-retry">🔄 再試一次</button>
+          <button class="btn3d" data-color="cream" data-back="s-home">🏠 回主選單</button>
+        </div>
+      </div>
+
+      <div id="lobby-live">
+        <div class="lobby-me">
+          <label class="lobby-nick" for="lobby-nick">
+            <span>你的暱稱</span>
+            <input id="lobby-nick" maxlength="12" autocomplete="off" spellcheck="false" placeholder="路過的玩家">
+          </label>
+          <div class="lobby-me-btns">
+            <button class="btn3d" data-color="mint" id="b-lobby-host"><span class="ico">🏠</span>開一間房</button>
+          </div>
+        </div>
+
+        <div class="lobby-join">
+          <label class="sr-only" for="lobby-code">房號</label>
+          <input id="lobby-code" maxlength="4" autocomplete="off" spellcheck="false" placeholder="有房號？直接輸入" aria-describedby="lobby-join-note">
+          <button class="btn3d small" data-color="grape" id="b-lobby-join">加入</button>
+        </div>
+        <p class="hint-note" id="lobby-join-note">房號是 4 個英數字，不會用到容易看錯的 I、O、0、1。也可以直接開朋友傳來的邀請連結。</p>
+
+        <div class="lobby-bar">
+          <h3 class="lbl">目前開著的房間</h3>
+          <button class="btn3d small" data-color="cream" id="b-lobby-refresh">🔄 重新整理</button>
+        </div>
+        <p class="lobby-state" id="lobby-state" role="status" aria-live="polite">正在連線…</p>
+        <div class="roomlist" id="roomlist"></div>
+        <p class="hint-note">房間只存在伺服器的記憶體裡：伺服器重新部署或重啟，房間就會消失。免費方案閒置一段時間會休眠，第一次連線可能要等十幾秒喚醒。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 戰場 ============================== -->
+  <section class="screen" id="s-battle" aria-label="戰場">
+    <div class="battle" id="battle">
+
+      <div class="battle-main">
+        <header class="battle-top">
+          <button class="btn3d small icononly" data-color="cream" id="b-battle-back" title="離開對局" aria-label="離開對局">◀</button>
+
+          <div class="turnbar">
+            <span class="chip chip-turn" id="turn-chip" role="status" aria-live="polite">準備中</span>
+            <span class="chip chip-wind" id="wind-chip"><span class="windsvg" id="wind-svg" aria-hidden="true"></span><b id="wind-text">無風</b></span>
+            <span class="chip chip-timer" id="timer-chip" hidden>90 秒</span>
+          </div>
+
+          <button class="btn3d small icononly aside-toggle" data-color="lemon" id="b-aside-toggle"
+                  title="開啟操作摘要" aria-label="開啟操作摘要" aria-expanded="false" aria-controls="battle-aside">📋</button>
+        </header>
+
+        <div class="hpbars">
+            <div class="hpcard" data-side="cat" id="hp-cat">
+              <span class="hpface" aria-hidden="true"></span>
+              <span class="hpinfo">
+                <b class="hpname">貓咪</b>
+                <span class="hpbar"><i style="width:100%"></i></span>
+              </span>
+              <span class="hpnum">100</span>
+            </div>
+            <div class="hpvs" aria-hidden="true">VS</div>
+            <div class="hpcard" data-side="dog" id="hp-dog">
+              <span class="hpface" aria-hidden="true"></span>
+              <span class="hpinfo">
+                <b class="hpname">狗狗</b>
+                <span class="hpbar"><i style="width:100%"></i></span>
+              </span>
+              <span class="hpnum">100</span>
+            </div>
+        </div>
+
+        <div class="stage" id="stage">
+          <canvas id="board" width="1200" height="640" role="img"
+                  aria-label="戰場：左邊是貓咪，右邊是狗狗，中間有一道圍牆"></canvas>
+
+          <!-- 房間等待／結算／訊息都疊在戰場上，聊天室與摘要維持可用 -->
+          <div class="stage-overlay" id="stage-overlay" hidden>
+            <div class="overlay-card" id="overlay-card" tabindex="-1"></div>
+          </div>
+
+          <!-- 聊天室：固定在戰場左下角，預設收合 -->
+          <div class="chatdock" id="chatdock" hidden>
+            <button class="chat-pill btn3d small" data-color="sky" id="b-chat-toggle" type="button"
+                    aria-expanded="false" aria-controls="chat-panel">
+              <span class="ico">💬</span>聊天室<span class="chat-unread" id="chat-unread" hidden>0</span>
+            </button>
+            <div class="chat-panel" id="chat-panel" hidden aria-label="房間聊天室">
+              <div class="chat-head">
+                <b>房間聊天室</b>
+                <span class="chat-scope" id="chat-scope">房號 ----</span>
+                <button class="chat-close" id="b-chat-close" type="button" aria-label="收起聊天室">✕</button>
+              </div>
+              <div class="chat-list" id="chat-list" role="log" aria-live="polite" aria-relevant="additions"></div>
+              <form class="chat-form" id="chat-form">
+                <label class="sr-only" for="chat-input">聊天訊息</label>
+                <input id="chat-input" maxlength="120" autocomplete="off" placeholder="說點什麼…">
+                <button class="btn3d small" data-color="mint" id="b-chat-send" type="submit">送出</button>
+              </form>
+              <p class="chat-state" id="chat-state" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="controls" id="controls">
+          <div class="ctrl-grid">
+            <div class="ctrl">
+              <label for="in-angle">角度</label>
+              <button class="stepbtn" id="b-angle-dn" type="button" aria-label="角度減 1 度">−</button>
+              <input type="range" id="in-angle" min="0" max="89" step="1" value="45"
+                     aria-describedby="ctrl-hint">
+              <button class="stepbtn" id="b-angle-up" type="button" aria-label="角度加 1 度">＋</button>
+              <output for="in-angle" id="out-angle">45°</output>
+            </div>
+            <div class="ctrl">
+              <label for="in-power">力道</label>
+              <button class="stepbtn" id="b-power-dn" type="button" aria-label="力道減 1">−</button>
+              <input type="range" id="in-power" min="10" max="100" step="1" value="60"
+                     aria-describedby="ctrl-hint">
+              <button class="stepbtn" id="b-power-up" type="button" aria-label="力道加 1">＋</button>
+              <output for="in-power" id="out-power">60</output>
+            </div>
+            <button class="btn3d big fire" data-color="peach" id="b-fire" type="button">
+              <span class="ico">🎯</span>發射！
+            </button>
+          </div>
+          <p class="ctrl-hint" id="ctrl-hint" role="status" aria-live="polite">在戰場上拖曳也可以瞄準；鍵盤可用左右鍵調角度、上下鍵調力道、空白鍵發射。</p>
+        </div>
+      </div>
+
+      <aside class="battle-aside" id="battle-aside" aria-label="操作摘要">
+        <div class="aside-head">
+          <h3>📋 操作摘要</h3>
+          <button class="aside-close" id="b-aside-close" type="button" aria-label="收起操作摘要">✕</button>
+        </div>
+        <div class="aside-body">
+          <div class="sumcard">
+            <div class="sum-line"><span>目前回合</span><b id="sum-turn">—</b></div>
+            <div class="sum-line"><span>你的身分</span><b id="sum-role">—</b></div>
+            <div class="sum-line"><span>可以做什麼</span><b id="sum-can">—</b></div>
+            <div class="sum-line"><span>風向</span><b id="sum-wind">—</b></div>
+            <div class="sum-line"><span>血量</span><b id="sum-hp">—</b></div>
+            <div class="sum-line"><span>剩餘時間</span><b id="sum-timer">—</b></div>
+            <div class="sum-line"><span>連線狀態</span><b id="sum-net">單機</b></div>
+          </div>
+
+          <h4 class="sum-h">這一局的目標</h4>
+          <p class="sum-note">輪流發射，把對方血量打到 0 就贏。爆炸會炸掉地形，中間那道圍牆也會慢慢被打穿。打滿 40 回合還沒分出勝負，血量多的一方獲勝。</p>
+
+          <h4 class="sum-h">房間成員</h4>
+          <div class="sum-members" id="sum-members">單機對戰，沒有其他成員。</div>
+
+          <h4 class="sum-h">每一發的紀錄</h4>
+          <ol class="sum-list" id="sum-list"></ol>
+          <p class="sum-empty" id="sum-empty">還沒有人出手。</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================== 設定彈窗 ============================== -->
+  <div class="settings-modal" id="settings-modal" role="dialog" aria-modal="true"
+       aria-labelledby="settings-title" aria-hidden="true">
+    <div class="settings-backdrop" data-settings-close></div>
+    <section class="settings-panel" id="settings-panel" tabindex="-1">
+      <div class="settings-head">
+        <span class="settings-badge" aria-hidden="true">⚙</span>
+        <h2 id="settings-title">遊戲設定</h2>
+        <button class="settings-close" id="settings-close" type="button" aria-label="關閉遊戲設定">✕</button>
+      </div>
+
+      <div class="settings-body" id="settings-body" tabindex="0" role="group" aria-label="設定項目">
+        <div class="settings-group">
+          <h3><span class="gico" aria-hidden="true">🎵</span>聲音</h3>
+          <label class="setting-toggle" for="settings-music">
+            <span><b>背景音樂</b><small id="settings-music-status">開啟</small></span>
+            <input id="settings-music" type="checkbox" checked>
+          </label>
+          <label class="setting-range" for="settings-music-volume">
+            <span>音樂音量 <output id="settings-music-volume-value">60%</output></span>
+            <input id="settings-music-volume" type="range" min="0" max="100" step="5" value="60">
+          </label>
+          <label class="setting-toggle" for="settings-sfx">
+            <span><b>遊戲音效</b><small id="settings-sfx-status">開啟</small></span>
+            <input id="settings-sfx" type="checkbox" checked>
+          </label>
+          <label class="setting-range" for="settings-sfx-volume">
+            <span>音效音量 <output id="settings-sfx-volume-value">100%</output></span>
+            <input id="settings-sfx-volume" type="range" min="0" max="100" step="5" value="100">
+          </label>
+          <label class="setting-toggle" for="settings-chatcue">
+            <span><b>聊天提示音</b><small>房間有新訊息時輕輕響一聲</small></span>
+            <input id="settings-chatcue" type="checkbox" checked>
+          </label>
+          <p class="settings-note">聲音會在你第一次點畫面之後才開始播放，這是瀏覽器的規定。全部靜音也能完整遊玩，重要資訊都有文字。</p>
+        </div>
+
+        <div class="settings-group">
+          <h3><span class="gico" aria-hidden="true">🎮</span>操作與顯示</h3>
+          <label class="setting-toggle" for="settings-haptic">
+            <span><b>震動回饋</b><small>命中與非法操作時輕震一下（需裝置支援）</small></span>
+            <input id="settings-haptic" type="checkbox" checked>
+          </label>
+          <label class="setting-toggle" for="settings-motion">
+            <span><b>減少動態</b><small>關掉畫面震動與飛行動畫，直接顯示結果</small></span>
+            <input id="settings-motion" type="checkbox">
+          </label>
+          <label class="setting-toggle" for="settings-trail">
+            <span><b>顯示彈道虛線</b><small>把上一發的軌跡留在畫面上當作參考</small></span>
+            <input id="settings-trail" type="checkbox" checked>
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <h3><span class="gico" aria-hidden="true">🐾</span>對局</h3>
+          <label class="setting-text" for="settings-nick">
+            <span><b>我的暱稱</b><small>線上房間裡別人看到的名字</small></span>
+            <input id="settings-nick" type="text" maxlength="12" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="setting-text" for="settings-ai">
+            <span><b>電腦難度</b><small>單機對戰與線上補位的電腦對手</small></span>
+            <select id="settings-ai">
+              <option value="easy">簡單</option>
+              <option value="normal">普通</option>
+              <option value="hard">困難</option>
+            </select>
+          </label>
+          <div class="setting-btns">
+            <button class="btn3d small" data-color="lemon" id="settings-restart" type="button">🔁 重新開始這一局</button>
+            <button class="btn3d small" data-color="peach" id="settings-quit" type="button">🚪 離開對局</button>
+          </div>
+          <p class="settings-note" id="settings-game-note">目前沒有進行中的對局。</p>
+        </div>
+
+        <div class="settings-group">
+          <h3><span class="gico" aria-hidden="true">🌐</span>連線</h3>
+          <div class="setting-static">
+            <span><b>遊戲伺服器</b><small id="settings-server-url">—</small></span>
+            <span class="server-pill" id="settings-server-pill" data-state="unset">未檢查</span>
+          </div>
+          <div class="setting-btns">
+            <button class="btn3d small" data-color="sky" id="settings-server-check" type="button">🔍 檢查連線</button>
+          </div>
+          <p class="settings-note">伺服器位址只能從網址參數 <code>?server=</code> 或部署時注入的設定取得，程式裡沒有寫死任何網域。</p>
+        </div>
+      </div>
+
+      <div class="settings-foot">
+        <button class="btn3d small settings-reset" data-color="gray" id="settings-reset" type="button">恢復預設</button>
+        <button class="btn3d settings-done" data-color="mint" id="settings-done" type="button">完成</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 全域提示（送出中、錯誤、成功） -->
+  <div class="toast" id="toast" role="status" aria-live="assertive" hidden></div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/rng.js"></script>
+<script src="js/rules.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/svgui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/online.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

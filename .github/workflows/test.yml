@@ -1,0 +1,33 @@
+name: 測試
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # 用 lockfile 安裝，確保 CI 跟本機拿到同一組版本
+      - name: 安裝相依套件
+        run: npm ci
+
+      - name: 規則、AI、房間狀態機與設定解析測試
+        run: npm test
+
+      - name: 線上端對端測試（2 位玩家 + 1 位觀戰）
+        run: npm run test:online
+
+      # 確認版控裡的 config.js 沒有被寫死成某個網域
+      - name: 檢查 server URL 沒有硬編碼
+        run: node scripts/inject-server-url.js --clear && git diff --exit-code public/js/config.js

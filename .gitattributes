@@ -1,0 +1,5 @@
+# 版控裡一律 LF，避免 Windows 與 CI 之間的換行差異
+* text=auto eol=lf
+
+# 批次檔在 Windows 上必須是 CRLF
+*.bat text eol=crlf
