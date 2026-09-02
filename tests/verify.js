@@ -335,10 +335,20 @@ test('直接命中會扣血並記錄在 shot 裡', () => {
   assert.ok(r.shot.damage.dog > 0);
   assert.ok(['head', 'body', 'legs'].includes(r.shot.hitPart));
   assert.strictEqual(r.shot.damage.dog, Rules.damageAt(r.shot.impact.x, r.shot.impact.y, st.fighters.dog).damage);
+  assert.strictEqual(r.state.fighters.dog.mood, 'hurt');
   assert.strictEqual(r.state.fighters.dog.hp, C.MAX_HP - r.shot.damage.dog);
   assert.strictEqual(r.state.turn, 'dog', '出手後應該換對手');
   assert.strictEqual(r.state.turnNo, 2);
   assert.strictEqual(r.state.version, 1);
+});
+
+test('視覺上穿過頭部的彈道也要判定為命中', () => {
+  const st = Rules.createState({ seed: 'HITTEST', first: 'cat' });
+  const result = Rules.applyShot(st, 'cat', { angle: 73, power: 99 });
+
+  assert.strictEqual(result.shot.impact.type, 'fighter');
+  assert.strictEqual(result.shot.impact.target, 'dog');
+  assert.ok(result.shot.damage.dog > 0);
 });
 
 test('血量歸零就結束，勝負與原因正確', () => {
@@ -1034,6 +1044,20 @@ test('完全沒人的房間會被回收', () => {
   assert.strictEqual(room.members.size, 0);
   const swept = store.sweep(T0 + 5000);
   assert.ok(swept.closed.some((r) => r.code === code), '空房應該被關掉');
+  assert.strictEqual(store.get(code), null);
+});
+
+test('空房回收時間從最後一人離線開始計算', () => {
+  const store = freshStore({ graceMs: 100, emptyMs: 500 });
+  const room = store.create('a', { name: 'A', now: T0 }).room;
+  const code = room.code;
+
+  room.disconnect('a', T0);
+  store.sweep(T0 + 100); // 寬限期結束，移除斷線成員
+  assert.strictEqual(room.members.size, 0);
+
+  const swept = store.sweep(T0 + 500);
+  assert.ok(swept.closed.some((r) => r.code === code), '空房應在最後一人離線 500ms 後關閉');
   assert.strictEqual(store.get(code), null);
 });
 

@@ -700,6 +700,8 @@ async function main() {
   await goto(P3, BASE);
   await P3.eval('window.__probe.click("#b-online"); return 1;');
   await P3.waitFor('window.CatDogApp.screen === "s-lobby"', 8000, '觀眾進大廳');
+  await P3.waitFor('Online.status().status === "connected"', 12000, '觀眾連線');
+  await P3.eval('Online.send("lobby:subscribe"); return 1;');
   await P3.waitFor('document.querySelector("[data-lobby=watch][data-code=' + code + ']")', 10000, '大廳出現這間房');
   check('線上：大廳列表看得到這間房並提供觀戰按鈕', true);
   await P3.eval('window.__probe.click("[data-lobby=watch][data-code=' + code + ']"); return 1;');
@@ -719,13 +721,24 @@ async function main() {
   check('線上：觀戰者的發射鈕是停用的',
     await P3.eval('return document.getElementById("b-fire").disabled === true;'));
   await shot0(P3, '線上-觀戰-對戰中');
+  /* 多分頁測試時 Chromium 可能把非目前分頁標成 hidden；這裡固定成可見，才會真的播飛行動畫。 */
+  for (const p of pages) await p.eval('Object.defineProperty(document, "hidden", { configurable: true, value: false }); Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" }); return 1;');
 
   /* 由輪到的一方出手 */
   const turnSide = (await P1.json('window.__probe.game()')).turn;
   const shooter = turnSide === 'cat' ? P1 : P2;
+  const nextShooter = turnSide === 'cat' ? P2 : P1;
   const before = (await P1.json('window.__probe.game()')).summary;
   await shooter.eval('document.getElementById("b-fire").click(); return 1;');
+  /* 刻意在前一發動畫尚未結束時送出下一手，驗證所有玩家的視覺節奏不會互相覆蓋。 */
+  await sleep(120);
+  await nextShooter.eval('Online.send("room:fire", {angle:45, power:60}); return 1;');
+  await sleep(120);
+  const playback = await P1.json('({busy:window.CatDogApp.busy, queued:window.CatDogApp.online.shotQueue ? window.CatDogApp.online.shotQueue.length : 0})');
+  check('線上：前一發尚未播完時，下一發會排隊而不覆蓋動畫',
+    playback.busy && playback.queued > 0, JSON.stringify(playback));
   for (const p of pages) await p.waitFor('window.CatDogApp.online.view.room.summary.length > ' + before, 20000, '摘要更新');
+  for (const p of pages) await p.waitFor('!window.CatDogApp.busy && (!window.CatDogApp.online.shotQueue || window.CatDogApp.online.shotQueue.length === 0)', 20000, '連續出手播放完成');
   check('線上：出手後三個分頁的操作摘要都即時更新', true);
   const onlineSummaryText = await P3.eval('return document.getElementById("sum-list").textContent;');
   check('線上：摘要保留力道與風向，但不顯示角度數字',

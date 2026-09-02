@@ -31,6 +31,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const AI_THINK_SCALE = process.env.AI_THINK_SCALE === undefined ? 1 : Number(process.env.AI_THINK_SCALE);
 const TURN_MS = Number(process.env.ROOM_TURN_MS || 90000);
 const STARTED_AT = Date.now();
+const AI_PLAYBACK_BUFFER_MS = 450;
 
 /* 允許的前端來源：正式環境請明確設定，不要放著 * 不管 */
 const ALLOWED = String(process.env.GAME_ALLOWED_ORIGIN || '*')
@@ -190,15 +191,31 @@ function clearAiTimer(code) {
   if (t) { clearTimeout(t); aiTimers.delete(code); }
 }
 
-/** 若輪到 AI，排一個「思考中」的延遲後由伺服器代打。任何用戶端都不能代替 AI 出手。 */
-function scheduleAi(room) {
+function shotPlaybackMs(shot) {
+  if (!shot || shot.result === 'pass') return 0;
+  const volley = shot.volley && shot.volley.length ? shot.volley : [shot];
+  let frames = 0;
+  for (const sub of volley) {
+    if (!sub || !sub.points || sub.points.length < 2) continue;
+    frames += Math.max(28, Math.min(120, sub.points.length));
+  }
+  if (!frames) return 0;
+  return Math.round(frames * 1000 / 60 + Math.max(0, volley.length - 1) * 240);
+}
+
+/** 若輪到 AI，等前一發播完再留出思考時間，由伺服器代打。 */
+function scheduleAi(room, previousShot) {
   clearAiTimer(room.code);
   if (room.phase !== 'playing' || !room.state || room.state.over) return;
   const side = room.state.turn;
   const level = room.ai[side];
   if (!level) return;
 
-  const delay = Math.max(0, Math.round(AI.levelOf(level).thinkMs * (isFinite(AI_THINK_SCALE) ? AI_THINK_SCALE : 1)));
+  const thinkScale = isFinite(AI_THINK_SCALE) ? Math.max(0, AI_THINK_SCALE) : 1;
+  const thinkDelay = Math.round(AI.levelOf(level).thinkMs * thinkScale);
+  const animationMs = shotPlaybackMs(previousShot);
+  const playbackDelay = thinkScale === 0 || !animationMs ? 0 : animationMs + AI_PLAYBACK_BUFFER_MS;
+  const delay = thinkDelay + playbackDelay;
   const timer = setTimeout(() => {
     aiTimers.delete(room.code);
     if (!store.get(room.code)) return;
@@ -366,7 +383,7 @@ io.on('connection', (socket) => {
     if (!res.ok) return fail(socket, res.error, res.code);
     broadcastShot(room, res.shot);
     syncLobby();
-    scheduleAi(room);
+    scheduleAi(room, res.shot);
   }));
 
   /* 補血是獨立事件：不發射砲彈，用完直接換手 */
@@ -375,7 +392,7 @@ io.on('connection', (socket) => {
     if (!res.ok) return fail(socket, res.error, res.code);
     broadcastShot(room, res.shot);
     syncLobby();
-    scheduleAi(room);
+    scheduleAi(room, res.shot);
   }));
 
   socket.on('room:surrender', withRoom((room) => {

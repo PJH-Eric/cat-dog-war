@@ -96,7 +96,7 @@
 
   /* ---- 貓咪頭像 ----
    * mood: idle | happy | hurt | win | lose | aim
-   * 表情只換眼睛和嘴巴，輪廓不動，讓玩家一眼認得出是同一隻。 */
+   * 受傷時換成哭哭眼、眼淚和嘴巴，輪廓不動，讓玩家一眼認得出是同一隻。 */
   function catFace(mood) {
     var c = SIDE_COLOR.cat;
     return '<g>' +
@@ -104,6 +104,7 @@
       '<path d="M82 30 L88 6 L60 20 Z" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5" stroke-linejoin="round"/>' +
       '<rect x="10" y="20" width="80" height="72" rx="32" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
       eyes(mood, 36, 52, 64, 52) +
+      tears(mood, 36, 52, 64, 52) +
       '<path d="M46 64 L50 68 L54 64" fill="none" stroke="' + INK + '" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>' +
       mouth(mood, 50, 72) +
       '<ellipse cx="24" cy="66" rx="8" ry="5" fill="' + c.accent + '" opacity="0.8"/>' +
@@ -120,6 +121,7 @@
       '<ellipse cx="84" cy="46" rx="13" ry="24" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="5"/>' +
       '<rect x="12" y="20" width="76" height="70" rx="30" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
       eyes(mood, 37, 50, 63, 50) +
+      tears(mood, 37, 50, 63, 50) +
       '<ellipse cx="50" cy="68" rx="22" ry="15" fill="#FFF3E4" stroke="' + INK + '" stroke-width="4"/>' +
       '<ellipse cx="50" cy="62" rx="8" ry="6" fill="' + INK + '"/>' +
       mouth(mood, 50, 74) +
@@ -147,6 +149,20 @@
       '<circle cx="' + x2 + '" cy="' + y2 + '" r="6.5" fill="' + INK + '"/>' +
       '<circle cx="' + (x1 + 2.5) + '" cy="' + (y1 - 2.5) + '" r="2" fill="#FFFFFF"/>' +
       '<circle cx="' + (x2 + 2.5) + '" cy="' + (y2 - 2.5) + '" r="2" fill="#FFFFFF"/>';
+  }
+
+  function tears(mood, x1, y1, x2, y2) {
+    if (mood !== 'hurt' && mood !== 'lose') return '';
+    return tear(mood, x1, y1) + (x1 === x2 && y1 === y2 ? '' : tear(mood, x2, y2));
+  }
+
+  function tear(mood, x, y) {
+    if (mood !== 'hurt' && mood !== 'lose') return '';
+    return '<path d="M' + x + ' ' + (y + 6) +
+      ' C' + (x - 5) + ' ' + (y + 13) + ' ' + (x - 4) + ' ' + (y + 19) + ' ' + x + ' ' + (y + 21) +
+      ' C' + (x + 4) + ' ' + (y + 19) + ' ' + (x + 5) + ' ' + (y + 13) + ' ' + x + ' ' + (y + 6) +
+      ' Z" fill="#73C9ED" stroke="#4A8DB4" stroke-width="2"/>' +
+      '<ellipse cx="' + (x - 1.5) + '" cy="' + (y + 14) + '" rx="1.5" ry="3" fill="#E9FBFF" opacity="0.9"/>';
   }
 
   function mouth(mood, cx, cy) {
@@ -292,6 +308,7 @@
       '<circle cx="93" cy="35" r="19" fill="' + c.body + '" stroke="' + INK + '" stroke-width="5"/>' +
       /* 側面只看得到一隻眼睛，所以兩個座標給同一點 */
       eyes(m, 97, 32, 97, 32) +
+      tear(m, 97, 32) +
       '<ellipse cx="88" cy="44" rx="8" ry="5" fill="' + c.accent + '" opacity="0.85"/>' +
       '<path d="M106 38 L110 42 L106 46" fill="none" stroke="' + INK + '" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>' +
       mouth(m, 103, 46) +
@@ -328,6 +345,7 @@
       /* 垂下來的耳朵蓋住頭側 */
       '<ellipse cx="84" cy="34" rx="10" ry="20" fill="' + c.dark + '" stroke="' + INK + '" stroke-width="4.5"/>' +
       eyes(m, 96, 32, 96, 32) +
+      tear(m, 96, 32) +
       /* 往前突出的鼻吻 */
       '<ellipse cx="109" cy="44" rx="12" ry="9" fill="#FFF3E4" stroke="' + INK + '" stroke-width="4"/>' +
       '<ellipse cx="116" cy="41" rx="5" ry="4" fill="' + INK + '"/>' +

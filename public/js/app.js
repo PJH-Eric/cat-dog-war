@@ -10,6 +10,7 @@
   var Rules = w.Rules, AI = w.AI, RNG = w.RNG, UI = w.UI, Board = w.Board;
   var Sound = w.Sound, Store = w.Store, Config = w.GameConfig, Online = w.Online;
   var C = Rules.CONST;
+  var ONLINE_TURN_PAUSE_MS = 650;
 
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) {
@@ -31,7 +32,7 @@
       pointerId: null, source: null, basePower: 60, startAngle: 45, startPower: 60,
       suppressClick: false, clickTimer: 0, outside: false
     },
-    busy: false,                // 動畫播放中，暫時不能再出手
+    busy: false,                // 動畫播放中，暫時不能再出手；線上事件另有排隊
     chatOpen: false,
     unread: 0,
     lastTurnAnnounced: '',
@@ -41,7 +42,7 @@
     },
     online: {
       view: null, code: null, pendingInvite: null, netStatus: 'idle', netMessage: '',
-      resultMarker: null
+      resultMarker: null, shotQueue: [], waitingForShot: false, shotPauseTimer: null
     }
   };
 
@@ -216,7 +217,8 @@
       game: v.game,
       mySide: you.side || null,
       role: you.role || 'spectator',
-      canFire: !!(you.can && you.can.fire) && !app.busy,
+      canFire: !!(you.can && you.can.fire) && !app.busy && !app.online.waitingForShot &&
+        app.online.shotQueue.length === 0 && !app.online.shotPauseTimer,
       canChat: !!(you.can && you.can.chat),
       summary: v.room.summary || [],
       members: v.room.members || [],
@@ -249,6 +251,13 @@
     if (app.mode === 'solo') return soloCtx();
     if (app.mode === 'online') return onlineCtx();
     return null;
+  }
+
+  function resetOnlinePlayback() {
+    app.online.shotQueue.length = 0;
+    app.online.waitingForShot = false;
+    clearTimeout(app.online.shotPauseTimer);
+    app.online.shotPauseTimer = null;
   }
 
   /* ============================================================ 戰場畫面 */
@@ -1226,6 +1235,7 @@
           toast((res && res.error) || '加入失敗。', 'error');
           return;
         }
+        resetOnlinePlayback();
         app.mode = 'online';
         app.online.code = res.code;
         app.online.resultMarker = null;
@@ -1242,6 +1252,7 @@
     ensureOnline().then(function () {
       Online.send('room:create', { name: Store.nick(), roomName: (Store.nick() || '玩家') + ' 的擂台' }, function (res) {
         if (!res || !res.ok) { toast((res && res.error) || '開房失敗。', 'error'); return; }
+        resetOnlinePlayback();
         app.mode = 'online';
         app.online.code = res.code;
         app.online.resultMarker = null;
@@ -1258,6 +1269,7 @@
     var surrendering = !!(view && view.room && view.room.phase === 'playing' && view.game &&
       !view.game.over && view.you && view.you.side);
     Online.send('room:leave');
+    resetOnlinePlayback();
     if (surrendering) {
       Store.recordResult('online', 'lose');
       toast('你已離開房間，這場對局視為投降。', 'info');
@@ -1305,7 +1317,9 @@
     renderBattle();
   });
 
-  Online.on('room:shot', function (payload) {
+  function drainOnlineShots() {
+    if (app.mode !== 'online' || app.busy || app.online.shotPauseTimer || !app.online.shotQueue.length) return;
+    var payload = app.online.shotQueue.shift();
     var shot = payload.shot;
     var prevView = app.online.view;
     /* 先用「出手前」的狀態播動畫，播完再套用伺服器算好的新狀態 */
@@ -1319,8 +1333,21 @@
       app.online.view = payload.view;
       if (payload.view.game && payload.view.game.over) recordOnlineOutcome(payload.view);
       else Sound.play('turn');
+      if (app.online.shotQueue.length) {
+        app.online.shotPauseTimer = setTimeout(function () {
+          app.online.shotPauseTimer = null;
+          drainOnlineShots();
+        }, ONLINE_TURN_PAUSE_MS);
+      }
       renderBattle();
     });
+  }
+
+  Online.on('room:shot', function (payload) {
+    if (app.mode !== 'online' || !payload || !payload.shot) return;
+    app.online.waitingForShot = false;
+    app.online.shotQueue.push(payload);
+    drainOnlineShots();
   });
 
   Online.on('room:chat', function (payload) {
@@ -1337,6 +1364,10 @@
   });
 
   Online.on('room:error', function (payload) {
+    if (app.online.waitingForShot) {
+      app.online.waitingForShot = false;
+      if (app.screen === 's-battle' && app.mode === 'online') renderBattle();
+    }
     toast(payload.message || '操作失敗。', 'error');
     Sound.play('blocked');
     Sound.vibrate(30);
@@ -1348,6 +1379,7 @@
 
   Online.on('room:closed', function (payload) {
     toast(payload.reason || '房間已經關閉。', 'error');
+    resetOnlinePlayback();
     app.online.view = null;
     app.online.code = null;
     app.mode = null;
@@ -1892,6 +1924,8 @@
     }
     if (ctx.mode === 'solo') soloFire();
     else {
+      app.online.waitingForShot = true;
+      renderControls(currentCtx() || {});
       Online.send('room:fire', { angle: app.aim.angle, power: app.aim.power, item: app.item });
       app.item = null;               // 送出後就清掉，伺服器回同步時會重畫道具列
     }

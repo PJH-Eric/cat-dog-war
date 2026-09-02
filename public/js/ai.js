@@ -42,7 +42,7 @@
       powerJitter: 12,      // 力道抖動
       items: 'never',       // 道具策略：完全不用
       healAt: 0,            // 血量低於多少就考慮補血；0 = 不補
-      thinkMs: 700
+      thinkMs: 1100
     },
     normal: {
       key: 'normal',
@@ -54,7 +54,7 @@
       powerJitter: 5,
       items: 'simple',      // 這一發本來就會命中時才加道具
       healAt: 30,
-      thinkMs: 1000
+      thinkMs: 1500
     },
     hard: {
       key: 'hard',
@@ -66,7 +66,7 @@
       powerJitter: 2,
       items: 'best',        // 每個道具都試算，挑期望傷害最高的
       healAt: 40,
-      thinkMs: 1300
+      thinkMs: 1900
     }
   };
 

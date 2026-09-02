@@ -60,7 +60,7 @@
     MUZZLE_UP: 48,       // 砲口相對角色腳底的高度（配合放大的角色）
     SELF_SAFE_STEPS: 14, // 前幾步不判定打到自己，免得一出膛就自爆
 
-    HIT_R: 34,           // 直接命中角色的判定半徑；配合放大後的角色降低擦身未中的挫折感
+    HIT_R: 34,           // 角色碰撞基準尺寸；hits() 會依頭／身體／腿部輪廓拆分判定
     BODY_H: 36,          // 角色身體中心離腳底的高度（傷害距離用）
     HEAD_Y_MIN: 48,      // 角色局部高度達到這裡算頭部命中
     LEG_Y_MAX: 23,       // 角色局部高度低於這裡算腿部命中
@@ -460,9 +460,23 @@
 
   function hits(x, y, fighter, hitR) {
     var r = hitR || CONST.HIT_R;
-    var dx = x - fighter.x;
-    var dy = y - (fighter.y + CONST.BODY_H);
+    var dir = fighter.dir || 1;
+    var body = ellipseContains(x, y, fighter.x - dir * 4, fighter.y + CONST.BODY_H, r, r * 0.72);
+    var head = circleContains(x, y, fighter.x + dir * 32, fighter.y + 60, r * 0.72);
+    var legs = ellipseContains(x, y, fighter.x - dir, fighter.y + 13, r * 0.78, r * 0.48);
+    return body || head || legs;
+  }
+
+  function circleContains(x, y, cx, cy, r) {
+    var dx = x - cx;
+    var dy = y - cy;
     return dx * dx + dy * dy <= r * r;
+  }
+
+  function ellipseContains(x, y, cx, cy, rx, ry) {
+    var dx = (x - cx) / rx;
+    var dy = (y - cy) / ry;
+    return dx * dx + dy * dy <= 1;
   }
 
   function hitPartAt(impactY, fighter) {
