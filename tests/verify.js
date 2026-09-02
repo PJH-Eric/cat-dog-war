@@ -286,6 +286,32 @@ test('命中部位會改變傷害，頭部較痛、腿部較輕', () => {
   assert.strictEqual(legs.critical, false);
 });
 
+test('直接命中頭部會記錄爆擊', () => {
+  const st = Rules.createState({ seed: 'HEADAA', first: 'cat' });
+  st.wind = 0;
+  for (let i = 0; i < st.ground.length; i++) st.ground[i] = 100;
+  st.fighters.cat.y = 100;
+  st.fighters.dog.x = 400;
+  st.fighters.dog.y = 100;
+
+  let headShot = null;
+  for (let a = 0; a <= 89 && !headShot; a += 1) {
+    for (let p = 10; p <= 100; p += 1) {
+      const sim = Rules.simulate(st, 'cat', a, p, { trace: false });
+      if (sim.impact.type !== 'fighter' || sim.impact.target !== 'dog') continue;
+      if (sim.impact.y - st.fighters.dog.y >= C.HEAD_Y_MIN) {
+        headShot = { a, p };
+        break;
+      }
+    }
+  }
+  assert.ok(headShot, '應該存在能命中頭部的角度與力道');
+  const r = Rules.applyShot(st, 'cat', { angle: headShot.a, power: headShot.p });
+  assert.strictEqual(r.shot.hitPart, 'head');
+  assert.strictEqual(r.shot.critical, true);
+  assert.ok(Rules.describeShot(r.shot).includes('爆擊'));
+});
+
 test('直接命中會扣血並記錄在 shot 裡', () => {
   /* 用一個一定會命中的情境：把狗搬到貓的正前方 */
   const st = Rules.createState({ seed: 'HITAAA', first: 'cat' });
