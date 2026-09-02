@@ -500,13 +500,13 @@
     ctx.restore();
   }
 
-  /** 蓄力中的角度與力道，直接標在砲口旁邊，不用低頭看下面的滑桿 */
+  /** 蓄力中的方向與力道，直接標在砲口旁邊；不顯示角度數字避免照抄 */
   function drawChargeReadout() {
     if (!charge.on || !state || !aim.side) return;
     var f = state.fighters[aim.side];
     var bx = sx(f.x) + f.dir * 54 * scale;
     var by = sy(f.y + C.MUZZLE_UP + 66);
-    var text = charge.angle + '°  力道 ' + charge.power;
+    var text = '蓄力中  力道 ' + charge.power;
     var fs = Math.max(13, 26 * scale);
 
     ctx.save();

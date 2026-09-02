@@ -1,6 +1,6 @@
 /* ===== 貓狗大戰 — 可愛風主題 =====
  * 版面策略：內容驅動的斷點 + 流動尺寸 + 安全區。
- * 各尺寸都以戰場為主，操作摘要改成右側可收合浮層、聊天室釘在戰場左下角；
+ * 各尺寸都以戰場為主，操作摘要與聊天室放在左側可收合資訊欄；
  * 道具資訊放在畫布天空左右兩側，主要遊戲畫面不再被側欄和控制列壓縮。
  */
 :root{
@@ -207,14 +207,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 /* ================================================================
    戰場
    ================================================================ */
-.battle{display:flex;height:100%;min-height:0;overflow:hidden}
+.battle{--aside-w:min(78vw,300px);display:flex;height:100%;min-height:0;overflow:hidden}
 .battle-main{
   position:relative;flex:1 1 auto;min-width:0;min-height:0;
   display:flex;flex-direction:column;
   padding:calc(4px + var(--safe-t)) 8px calc(4px + var(--safe-b)) calc(8px + var(--safe-l));
 }
 
-/* 上排：離開鈕、回合／風向／倒數、摘要開關。右側留白給固定的設定鈕。 */
+/* 上排：離開鈕、回合／風向／倒數、左側摘要開關。右側留白給固定的設定鈕。 */
 .battle-top{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding-right:112px}
 /* 第二排：兩張血量卡各佔一半，窄畫面也還有空間放頭像、名字與血條 */
 .hpbars{flex:0 0 auto;display:flex;align-items:center;gap:6px;min-width:0;margin-top:3px}
@@ -253,7 +253,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .chip-wind .windsvg svg{width:100%;height:100%;display:block}
 .chip-timer{background:var(--lemon)}
 .chip-timer[data-urgent=true]{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
-.aside-toggle{position:absolute;z-index:71;top:calc(4px + var(--safe-t));right:calc(70px + var(--safe-r))}
+.aside-toggle{position:absolute;z-index:71;top:calc(4px + var(--safe-t));left:calc(70px + var(--safe-l))}
 
 /* 戰場畫布 */
 .stage{
@@ -264,9 +264,20 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .stage canvas{
   display:block;border:3px solid var(--ink);border-radius:18px;
   box-shadow:0 6px 0 rgba(74,59,85,.16);background:#EAF6FF;
-  touch-action:none;cursor:crosshair;
+  touch-action:none;cursor:crosshair;-webkit-touch-callout:none;
 }
 body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
+
+/* 平板操作提示固定在畫布上方中央，不會攔截手勢；輪到玩家時顯示目前可做的動作。 */
+.stage-gesture-hint{
+  position:absolute;top:8px;left:50%;z-index:25;transform:translateX(-50%);
+  width:max-content;max-width:min(68vw,460px);padding:7px 13px;
+  border:2px solid var(--ink);border-radius:999px;background:rgba(255,253,248,.9);
+  box-shadow:0 3px 0 rgba(74,59,85,.16);color:var(--ink-soft);
+  font-size:.8rem;font-weight:800;line-height:1.35;text-align:center;
+  pointer-events:none;user-select:none;-webkit-user-select:none;
+}
+.stage-gesture-hint[data-kind=error]{border-color:var(--danger);color:var(--danger);background:rgba(255,230,232,.94)}
 
 /* 畫布天空中的雙方道具 HUD：兩邊都看得到，只有自己的按鈕可以操作。 */
 .stage-items{
@@ -287,7 +298,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .stage-item-head span{font-size:.62rem;font-weight:800;color:var(--ink-soft);white-space:nowrap}
 .stage-item-list{display:flex;flex-wrap:wrap;gap:3px}
 .stage-item-btn{
-  flex:1 0 36px;min-width:36px;height:40px;padding:3px 4px;
+  flex:1 0 48px;min-width:48px;height:48px;padding:4px 5px;
   display:inline-flex;align-items:center;justify-content:center;gap:2px;
   border:2px solid var(--line);border-radius:9px;background:rgba(255,255,255,.86);
   color:var(--ink);font:inherit;cursor:pointer;pointer-events:auto;
@@ -347,8 +358,9 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .resulttrophy{width:76px;height:76px;margin:0 auto 4px}
 .resulttrophy svg{width:100%;height:100%}
 
-/* 聊天室：釘在戰場左下角，預設收合 */
+/* 聊天室：與操作摘要同在左側，預設收合；摘要開啟後移到資訊欄旁避免遮住 */
 .chatdock{position:absolute;left:8px;bottom:8px;z-index:45;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.battle.aside-open .chatdock{left:calc(var(--aside-w) + 8px)}
 .chat-pill{position:relative;--d:5px}
 .chat-unread{
   display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;
@@ -363,7 +375,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .chat-head{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:3px solid var(--line);background:#F6EEFF}
 .chat-head b{font-size:.9rem}
 .chat-scope{flex:1;font-size:.72rem;font-weight:800;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chat-close{width:34px;height:34px;flex:0 0 auto;border:2px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
+.chat-close{width:48px;height:48px;flex:0 0 auto;border:2px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
 .chat-close:focus-visible{outline:3px solid var(--sky-d);outline-offset:2px}
 .chat-list{
   flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px;
@@ -381,10 +393,10 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .chat-form input{
   flex:1 1 auto;min-width:0;font:inherit;font-size:.86rem;
   border:3px solid var(--line);border-radius:12px;padding:7px 10px;background:#fff;color:var(--ink);
-  outline:none;min-height:42px;user-select:text;-webkit-user-select:text
+  outline:none;min-height:48px;user-select:text;-webkit-user-select:text
 }
 .chat-form input:focus{border-color:var(--grape-d)}
-.chat-form .btn3d{min-height:42px;--d:5px;padding:6px 12px calc(6px + var(--d))}
+.chat-form .btn3d{min-height:48px;--d:5px;padding:7px 12px calc(7px + var(--d))}
 .chat-state{margin:0;padding:0 9px 6px;font-size:.72rem;font-weight:800;color:var(--ink-soft);min-height:1.1em}
 .chat-state[data-kind=error]{color:var(--danger)}
 
@@ -412,20 +424,20 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .ctrl-hint[data-kind=error]{color:var(--danger)}
 .ctrl-hint[data-kind=ok]{color:var(--ok)}
 
-/* 右側操作摘要浮層：不佔用戰場寬度，打開時才覆蓋右側。 */
+/* 左側操作摘要浮層：不佔用戰場寬度，打開時才覆蓋左側。 */
 .battle-aside{
-  position:fixed;top:0;right:0;bottom:0;z-index:80;
-  width:min(78vw,300px);min-height:0;
+  position:fixed;top:0;left:0;bottom:0;z-index:80;
+  width:var(--aside-w);min-height:0;
   display:flex;flex-direction:column;
-  border-left:3px solid var(--line);background:rgba(255,253,248,.92);
-  padding-top:var(--safe-t);padding-right:var(--safe-r);padding-bottom:var(--safe-b);
-  box-shadow:-8px 0 0 rgba(74,59,85,.14);
-  transform:translateX(102%);transition:transform .22s ease;
+  border-right:3px solid var(--line);background:rgba(255,253,248,.92);
+  padding-top:var(--safe-t);padding-left:var(--safe-l);padding-bottom:var(--safe-b);
+  box-shadow:8px 0 0 rgba(74,59,85,.14);
+  transform:translateX(-102%);transition:transform .22s ease;
 }
 .battle-aside.open{transform:translateX(0)}
 .aside-head{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:3px solid var(--line)}
 .aside-head h3{flex:1;margin:0;font-size:1.02rem;color:var(--grape-t)}
-.aside-close{display:block;width:38px;height:38px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
+.aside-close{display:block;width:48px;height:48px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-weight:900;cursor:pointer}
 .aside-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:8px 9px 12px}
 .sumcard{border:3px solid var(--line);border-radius:16px;background:#fff;padding:7px 10px}
 .sum-line{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:2px dashed var(--line);font-size:.78rem}
@@ -485,7 +497,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
   box-shadow:0 3px 0 var(--lemon-d);font-size:1.15rem;
 }
 .settings-head h2{flex:1;margin:0;text-align:center;font-size:1.3rem;letter-spacing:.05em}
-.settings-close{flex:0 0 auto;width:44px;height:44px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-size:1.1rem;font-weight:900;cursor:pointer;box-shadow:0 4px 0 var(--rose-d)}
+.settings-close{flex:0 0 auto;width:48px;height:48px;border:3px solid var(--ink);border-radius:50%;background:var(--rose);color:var(--ink);font:inherit;font-size:1.1rem;font-weight:900;cursor:pointer;box-shadow:0 4px 0 var(--rose-d)}
 .settings-close:active{transform:translateY(3px);box-shadow:0 1px 0 var(--rose-d)}
 
 .settings-body{
@@ -564,10 +576,11 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
    RWD：內容驅動的斷點
    ================================================================ */
 
-/* 窄版把摘要浮層縮窄，避免打開後遮住太多戰場 */
+/* 窄版把左側摘要浮層縮窄，避免打開後遮住太多戰場 */
 @media (max-width:979px){
+  .battle{--aside-w:min(86vw,320px)}
   .battle-aside{
-    width:min(86vw,320px);
+    width:var(--aside-w);
   }
   .battle-main{padding-right:calc(10px + var(--safe-r))}
 }
@@ -617,9 +630,15 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
   .logo{max-width:360px}
 }
 
-/* 大桌機：摘要只保留一個窄浮層，避免搶走遊戲焦點 */
+/* 大桌機：左側摘要只保留一個窄浮層，避免搶走遊戲焦點 */
 @media (min-width:1440px){
-  .battle-aside{width:min(22vw,320px)}
+  .battle{--aside-w:min(22vw,320px)}
+  .battle-aside{width:var(--aside-w)}
+}
+
+/* 手機直向沒有足夠寬度同時顯示兩個浮層；摘要開啟時收起聊天室，避免彼此遮住。 */
+@media (max-width:620px){
+  .battle.aside-open .chatdock{left:8px;visibility:hidden;pointer-events:none}
 }
 
 /* ============================ 道具列與蓄力條 ============================ */
@@ -675,9 +694,10 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
   .stage-item-head{padding-bottom:2px}
   .stage-item-head b{font-size:.64rem}
   .stage-item-head span{font-size:.56rem}
-  .stage-item-btn{min-width:36px;height:40px;padding:3px 4px}
+  .stage-item-btn{min-width:48px;height:48px;padding:4px 5px}
   .stage-item-btn .ico{font-size:.82rem}
   .stage-item-btn .num{font-size:.6rem}
+  .stage-gesture-hint{max-width:calc(100% - 120px);padding:6px 10px;font-size:.72rem;line-height:1.25}
 }
 
 /* 橫向矮視窗：控制列要盡量矮，把高度留給戰場 */
@@ -692,7 +712,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 }
 
 /* 橫向矮視窗（例如 667×375）：控制列再壓一次，把高度還給戰場畫布。
-   所有可點元素仍維持 38px 以上的命中高度。 */
+   控制列已隱藏，畫布內仍維持適合觸控的道具命中高度。 */
 @media (orientation:landscape) and (max-height:400px){
   .battle-main{padding-top:calc(2px + var(--safe-t));padding-bottom:calc(2px + var(--safe-b))}
   .controls{padding-top:2px;padding-bottom:2px}

@@ -200,7 +200,7 @@
           </div>
 
           <button class="btn3d small icononly aside-toggle" data-color="lemon" id="b-aside-toggle"
-                  title="開啟操作摘要" aria-label="開啟操作摘要" aria-expanded="false" aria-controls="battle-aside">📋</button>
+                  title="開啟左側操作摘要" aria-label="開啟左側操作摘要" aria-expanded="false" aria-controls="battle-aside">📋</button>
         </header>
 
         <div class="hpbars">
@@ -230,12 +230,15 @@
             <div class="stage-items" id="stage-items" hidden aria-label="雙方剩餘道具"></div>
           </div>
 
+          <div class="stage-gesture-hint" id="stage-gesture-hint" hidden
+               role="status" aria-live="polite"></div>
+
           <!-- 房間等待／結算／訊息都疊在戰場上，聊天室與摘要維持可用 -->
           <div class="stage-overlay" id="stage-overlay" hidden>
             <div class="overlay-card" id="overlay-card" tabindex="-1"></div>
           </div>
 
-          <!-- 聊天室：固定在戰場左下角，預設收合 -->
+          <!-- 聊天室：與操作摘要同在左側，預設收合；摘要開啟時自動讓出位置 -->
           <div class="chatdock" id="chatdock" hidden>
             <button class="chat-pill btn3d small" data-color="sky" id="b-chat-toggle" type="button"
                     aria-expanded="false" aria-controls="chat-panel">
@@ -294,7 +297,7 @@
         </div>
       </div>
 
-      <aside class="battle-aside" id="battle-aside" aria-label="操作摘要">
+      <aside class="battle-aside" id="battle-aside" aria-label="左側操作摘要">
         <div class="aside-head">
           <h3>📋 操作摘要</h3>
           <button class="aside-close" id="b-aside-close" type="button" aria-label="收起操作摘要">✕</button>

@@ -29,7 +29,7 @@
     charge: {
       on: false, armed: false, t0: 0, raf: 0, armTimer: 0,
       pointerId: null, source: null, basePower: 60, startAngle: 45, startPower: 60,
-      suppressClick: false, clickTimer: 0
+      suppressClick: false, clickTimer: 0, outside: false
     },
     busy: false,                // 動畫播放中，暫時不能再出手
     chatOpen: false,
@@ -56,6 +56,9 @@
     });
     app.screen = id;
     if (id === 's-battle') {
+      $('battle-aside').classList.remove('open');
+      $('battle').classList.remove('aside-open');
+      $('b-aside-toggle').setAttribute('aria-expanded', 'false');
       Sound.setTrack('battle');
       setTimeout(function () { Board.resize(); }, 30);
     } else {
@@ -84,6 +87,11 @@
     var el = $('ctrl-hint');
     el.textContent = message;
     el.setAttribute('data-kind', kind || 'info');
+    var stageHint = $('stage-gesture-hint');
+    if (stageHint && !stageHint.hidden) {
+      stageHint.textContent = message;
+      stageHint.setAttribute('data-kind', kind || 'info');
+    }
   }
 
   /* ============================================================ 教學 */
@@ -98,7 +106,7 @@
     {
       title: '一次出手要決定兩件事',
       html: '<ul>' +
-        '<li><b>角度</b>：0° 是水平往前，89° 幾乎是往正上方。按住戰場後往不同方向移動，就能調整角度。</li>' +
+        '<li><b>角度</b>：從水平到接近垂直都能瞄準。按住戰場後往不同方向移動，就能調整發射方向。</li>' +
         '<li><b>力道</b>：10 到 100。力道越大飛越遠，滿力大約可以從畫面這一端打到另一端。</li>' +
         '</ul>' +
         '<p>按住戰場持續蓄力，放開就發射；蓄力中的彈頭會變成箭頭提示方向。</p>'
@@ -107,6 +115,7 @@
       title: '多種瞄準方式，挑順手的用',
       html: '<ul>' +
         '<li><b>戰場按住拖曳</b>（平板、手機最順）：手指按在戰場上往你想打的方向移動，會同時調整角度與力道；繼續按住會蓄力，<b>放開就發射</b>。快速點一下只會保留瞄準。</li>' +
+        '<li>不想發射時，把手指拖出戰場再放開即可取消這次瞄準。</li>' +
         '<li><b>鍵盤</b>：<span class="key">←</span> <span class="key">→</span> 調角度，<span class="key">↑</span> <span class="key">↓</span> 調力道，<span class="key">空白鍵</span> 發射。</li>' +
         '</ul>' +
         '<p>蓄力時虛線末端會變成箭頭，箭頭越大代表力道越大；平時則顯示圓點。</p>'
@@ -349,6 +358,11 @@
     $('b-fire').disabled = !can;
     renderItemBar(ctx);
 
+    var stageHint = $('stage-gesture-hint');
+    if (stageHint) {
+      stageHint.hidden = !(ctx.game && !ctx.game.over && can);
+    }
+
     if (!ctx.game || ctx.phase === 'waiting') {
       hint(ctx.mode === 'online' ? '等房主按下「開始對局」。' : '準備開打。');
     } else if (ctx.game.over) {
@@ -466,7 +480,7 @@
           ? '時間到，這回合跳過'
           : (s.result === 'surrender'
             ? '主動投降，對局結束'
-            : ('角度 ' + s.angle + '° · 力道 ' + s.power + ' · 風 ' + Rules.describeWind(s.wind)));
+            : ('方向依箭頭 · 力道 ' + s.power + ' · 風 ' + Rules.describeWind(s.wind)));
         var outcome = s.result === 'pass' ? '' :
           (Rules.RESULT_TEXT[s.result] || '') +
           (hitting ? '，' + Rules.SIDE_LABEL[foe] + ' -' + s.damage[foe] : '') +
@@ -873,6 +887,8 @@
   /** 開始合併手勢；戰場可邊移動瞄準邊蓄力，發射鈕則只蓄力。 */
   function startCharge(e, source, ctx) {
     if (app.charge.on) return;
+    if (e.isPrimary === false) return;
+    if (e.button !== undefined && e.button !== 0) return;
     var c = app.charge;
     c.on = true;
     c.armed = false;
@@ -882,6 +898,8 @@
     c.basePower = app.aim.power;
     c.startAngle = app.aim.angle;
     c.startPower = app.aim.power;
+    c.outside = false;
+    if (e.pointerType === 'touch') Sound.vibrate(8);
     if (source === 'board' && ctx && ctx.mySide) {
       var a = Board.pointToAim(e.clientX, e.clientY, ctx.mySide);
       c.basePower = a.power;
@@ -904,12 +922,12 @@
     }, CHARGE_ARM_MS);
   }
 
-  /** 蓄力中的即時讀數：力道條 + 角度與力道的數字 */
+  /** 蓄力中的即時讀數：力道條與力道數字；方向只用箭頭呈現 */
   function showCharge(t) {
     var c = app.charge;
     $('chargefill').style.width = Math.round(t * 100) + '%';
     hint((c.armed ? '蓄力中…' : '瞄準中…繼續按住蓄力')
-      + ' 角度 ' + app.aim.angle + '° · 力道 ' + app.aim.power + '（放開就發射）');
+      + ' 力道 ' + app.aim.power + '（方向看箭頭，放開就發射）');
     Board.setCharge({ on: true, angle: app.aim.angle, power: app.aim.power });
   }
 
@@ -943,7 +961,7 @@
     if (source === 'button' && !armed) setAim(app.aim.angle, basePower, true);
     if (source === 'board' && !armed) {
       Sound.play('tick');
-      hint('已瞄準：角度 ' + app.aim.angle + '°、力道 ' + app.aim.power + '。繼續按住並放開即可發射。');
+      hint('已更新發射方向，力道 ' + app.aim.power + '。繼續按住並放開即可發射。');
     } else if (shoot) {
       fire();
     }
@@ -1545,11 +1563,17 @@
     $('b-aside-toggle').addEventListener('click', function () {
       var open = !$('battle-aside').classList.contains('open');
       $('battle-aside').classList.toggle('open', open);
+      $('battle').classList.toggle('aside-open', open);
+      if (open) {
+        if (app.chatOpen) setChatOpen(false);
+        $('b-aside-close').focus();
+      }
       $('b-aside-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
       Sound.play('click');
     });
     $('b-aside-close').addEventListener('click', function () {
       $('battle-aside').classList.remove('open');
+      $('battle').classList.remove('aside-open');
       $('b-aside-toggle').setAttribute('aria-expanded', 'false');
       $('b-aside-toggle').focus();
       Sound.play('click');
@@ -1604,6 +1628,19 @@
     canvas.addEventListener('pointermove', function (e) {
       var c = app.charge;
       if (!c.on || c.source !== 'board' || c.pointerId !== e.pointerId) return;
+      var r = canvas.getBoundingClientRect();
+      var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (!inside) {
+        c.outside = true;
+        hint('已移出戰場，再放開會取消這次瞄準。');
+        e.preventDefault();
+        return;
+      }
+      if (c.outside) {
+        hint('這次瞄準已取消，請重新按住戰場開始。');
+        e.preventDefault();
+        return;
+      }
       var ctx = currentCtx();
       if (!ctx || !ctx.mySide) return;
       var a = Board.pointToAim(e.clientX, e.clientY, ctx.mySide);
@@ -1613,7 +1650,9 @@
     });
     canvas.addEventListener('pointerup', function (e) {
       if (!app.charge.on || app.charge.source !== 'board' || app.charge.pointerId !== e.pointerId) return;
-      endCharge(true, false);
+      var r = canvas.getBoundingClientRect();
+      var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      endCharge(inside && !app.charge.outside, !inside || app.charge.outside);
       /* 先結束狀態再釋放 capture，避免 lostpointercapture 把正常操作誤判成取消。 */
       try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
       e.preventDefault();
@@ -1752,6 +1791,11 @@
       if (app.screen !== 's-battle') return;
       var tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;
+      if (e.key === 'Escape' && app.charge.on) {
+        e.preventDefault();
+        endCharge(false, true);
+        return;
+      }
       var ctx = currentCtx();
       if (!ctx || !ctx.canFire) return;
       var big = e.shiftKey ? 5 : 1;

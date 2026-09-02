@@ -161,7 +161,7 @@ const PAGE_HELPERS = `
         if (el.hidden || el.offsetParent === null || offCanvas(el)) continue;
         var r = hitBox(el);
         if (r.width === 0 && r.height === 0) continue;
-        if (r.height < 38 || r.width < 24) small.push((el.id || el.className) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+        if (r.height < 46 || r.width < 46) small.push((el.id || el.className) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
       }
 
       var wide = [];
@@ -220,6 +220,8 @@ const PAGE_HELPERS = `
         ratio: Math.round((cr.width / Math.max(1, cr.height)) * 100) / 100,
         controls: { w: Math.round(controls.width), h: Math.round(controls.height) },
         items: { w: Math.round(items.width), h: Math.round(items.height), l: Math.round(items.left), r: Math.round(items.right), t: Math.round(items.top), b: Math.round(items.bottom) },
+        gestureHint: { hidden: document.getElementById('stage-gesture-hint').hidden, text: document.getElementById('stage-gesture-hint').textContent },
+        canFire: !document.getElementById('b-fire').disabled,
         chatCoversItems: chatCoversItems,
         asideVisible: document.getElementById('battle-aside').classList.contains('open')
       };
@@ -434,13 +436,16 @@ async function main() {
     const itemHud = await cdp.json('({panels:document.querySelectorAll("#stage-items .stage-item-panel").length,buttons:document.querySelectorAll("#stage-items .stage-item-btn").length})');
     check(v.name + '：天空 HUD 同時顯示貓狗兩側道具',
       itemHud.panels === 2 && itemHud.buttons >= 9, JSON.stringify(itemHud));
+    check(v.name + '：輪到玩家時畫布上有觸控操作提示',
+      st.gestureHint.hidden === !st.canFire && (!st.canFire || /按住|放開/.test(st.gestureHint.text)),
+      JSON.stringify({ canFire: st.canFire, gestureHint: st.gestureHint }));
     await shot(v.name + '-5-戰場');
 
     /* 各尺寸：打開摘要浮層，不應再壓縮畫布 */
     await cdp.eval('window.__probe.click("#b-aside-toggle"); return 1;');
     await sleep(320);
     const opened = await cdp.json('({open:document.getElementById("battle-aside").classList.contains("open"),aria:document.getElementById("b-aside-toggle").getAttribute("aria-expanded")})');
-    check(v.name + '：操作摘要可以在右側浮層展開', opened.open && opened.aria === 'true', JSON.stringify(opened));
+    check(v.name + '：操作摘要可以在左側浮層展開', opened.open && opened.aria === 'true', JSON.stringify(opened));
     await shot(v.name + '-6-摘要面板');
     await cdp.eval('window.__probe.click("#b-aside-close"); return 1;');
     await sleep(250);
@@ -510,6 +515,58 @@ async function main() {
   check('單機：放開戰場蓄力手勢只發射一發',
     (await cdp.json('window.__probe.game()')).summary === 1);
   await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.busy', 12000, '戰場蓄力射擊後輪到玩家');
+
+  /* 平板觸控：使用真實 touch event，不只驗證滑鼠相容事件。 */
+  const touchId = 7;
+  const touchSummaryBefore = (await cdp.json('window.__probe.game()')).summary;
+  const touchStart = {
+    id: touchId, x: Math.round(box.x + box.width * 0.2), y: Math.round(box.y + box.height * 0.4),
+    radiusX: 18, radiusY: 18, force: 1
+  };
+  const touchMove = {
+    id: touchId, x: Math.round(box.x + box.width * 0.42), y: Math.round(box.y + box.height * 0.18),
+    radiusX: 18, radiusY: 18, force: 1
+  };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchStart] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchMove] });
+  await sleep(420);
+  const touchCharging = await cdp.json('({on:window.CatDogApp.charge.on, armed:window.CatDogApp.charge.armed, power:window.CatDogApp.aim.power, active:document.body.classList.contains("charge-active")})');
+  check('平板：觸控按住移動會同時瞄準與蓄力',
+    touchCharging.on && touchCharging.armed && touchCharging.power > 10 && touchCharging.active,
+    JSON.stringify(touchCharging));
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.waitFor('window.CatDogApp.solo.summary.length > ' + touchSummaryBefore, 6000, '觸控蓄力射擊完成');
+  check('平板：放開觸控會發射一發',
+    (await cdp.json('window.__probe.game()')).summary >= touchSummaryBefore + 1);
+  await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.busy', 12000, '觸控蓄力射擊後輪到玩家');
+  const touchSummaryAfter = (await cdp.json('window.__probe.game()')).summary;
+
+  /* 觸控取消：拖到畫布外再放開，不應誤射。 */
+  const cancelMove = {
+    id: touchId, x: Math.max(1, Math.round(box.x - 12)), y: Math.round(box.y + box.height * 0.18),
+    radiusX: 18, radiusY: 18, force: 1
+  };
+  await cdp.eval(
+    'var c=document.getElementById("board"), r=c.getBoundingClientRect(), id=77;' +
+    'c.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,cancelable:true,pointerId:id,pointerType:"touch",isPrimary:true,button:0,buttons:1,clientX:' + touchStart.x + ',clientY:' + touchStart.y + '}));' +
+    'return 1;'
+  );
+  await cdp.eval(
+    'var c=document.getElementById("board");' +
+    'c.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,cancelable:true,pointerId:77,pointerType:"touch",isPrimary:true,button:0,buttons:1,clientX:' + cancelMove.x + ',clientY:' + cancelMove.y + '}));' +
+    'return 1;'
+  );
+  await sleep(240);
+  await cdp.eval(
+    'var c=document.getElementById("board");' +
+    'c.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,cancelable:true,pointerId:77,pointerType:"touch",isPrimary:true,button:0,buttons:0,clientX:' + touchStart.x + ',clientY:' + touchStart.y + '}));' +
+    'return 1;'
+  );
+  await sleep(200);
+  const touchCancelled = await cdp.json('({on:window.CatDogApp.charge.on, summary:window.CatDogApp.solo.summary.length, busy:window.CatDogApp.busy})');
+  check('平板：拖出戰場後取消不會誤射',
+    !touchCancelled.on && touchCancelled.summary === touchSummaryAfter && !touchCancelled.busy,
+    JSON.stringify(touchCancelled));
 
   /* 打完一整局 */
   let shots = 0;
@@ -652,9 +709,9 @@ async function main() {
   await shooter.eval('document.getElementById("b-fire").click(); return 1;');
   for (const p of pages) await p.waitFor('window.CatDogApp.online.view.room.summary.length > ' + before, 20000, '摘要更新');
   check('線上：出手後三個分頁的操作摘要都即時更新', true);
-  check('線上：摘要內容有角度、力道與風向',
-    /角度/.test(await P3.eval('return document.getElementById("sum-list").textContent;')) &&
-    /力道/.test(await P3.eval('return document.getElementById("sum-list").textContent;')));
+  const onlineSummaryText = await P3.eval('return document.getElementById("sum-list").textContent;');
+  check('線上：摘要保留力道與風向，但不顯示角度數字',
+    /力道/.test(onlineSummaryText) && /風/.test(onlineSummaryText) && !/角度\s*\d+°/.test(onlineSummaryText));
 
   /* 聊天室 */
   await P2.eval('document.getElementById("b-chat-toggle").click(); var i=document.getElementById("chat-input"); i.value="我要贏了"; document.getElementById("chat-form").dispatchEvent(new Event("submit",{cancelable:true})); return 1;');
