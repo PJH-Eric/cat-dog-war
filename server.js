@@ -52,6 +52,8 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && originAllowed(origin)) {
     res.setHeader('Access-Control-Allow-Origin', allowAll ? '*' : origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Vary', 'Origin');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -100,6 +102,33 @@ const lobbySockets = new Set();
 const aiTimers = new Map();
 
 const now = () => Date.now();
+
+function presenceSnapshot() {
+  let players = 0;
+  let spectators = 0;
+  let rooms = 0;
+  for (const [code, sockets] of roomSockets) {
+    const room = store.get(code);
+    if (!room || !sockets.size) continue;
+    rooms += 1;
+    for (const socket of sockets) {
+      const member = room.member(socket.data.clientId);
+      if (member?.role === 'player') players += 1;
+      if (member?.role === 'spectator') spectators += 1;
+    }
+  }
+  return {
+    gameId: 'cat-dog-war',
+    online: io.engine.clientsCount,
+    players,
+    spectators,
+    lobby: lobbySockets.size,
+    rooms,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+app.get('/api/presence', (_req, res) => res.json(presenceSnapshot()));
 
 function socketsOf(code) {
   let set = roomSockets.get(code);
