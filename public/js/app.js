@@ -50,6 +50,8 @@
   var SCREENS = ['s-home', 's-solo', 's-help', 's-stats', 's-lobby', 's-battle'];
 
   function show(id) {
+    if (isSettingsOpen()) closeSettings();
+    if (isBattleSettingsOpen()) closeBattleSettings();
     SCREENS.forEach(function (s) {
       var el = $(s);
       if (el) el.classList.toggle('active', s === id);
@@ -101,7 +103,7 @@
       title: '這是什麼遊戲？',
       html: '<p>一隻貓站在畫面左邊、一隻狗站在右邊，中間隔著一道圍牆。</p>' +
         '<p>兩邊<b>輪流出手</b>：貓丟毛線球、狗丟骨頭。砲彈會受重力往下掉、受風往旁邊吹，畫出一條拋物線。</p>' +
-        '<p>打中對方就扣血，先把對方血量打到 <b>0</b> 的一方獲勝。</p>'
+        '<p>打中對方就扣血：身體是標準傷害，腿部較輕，頭部會出現 <b>💥 爆擊</b> 並造成更高傷害；先把對方血量打到 <b>0</b> 的一方獲勝。</p>'
     },
     {
       title: '一次出手要決定兩件事',
@@ -147,7 +149,7 @@
         '<li><b>線上對戰</b>：開一間房，把邀請連結傳給朋友，兩台不同電腦各選一邊就能打；其他人可以進來<b>觀戰</b>，觀戰者看得到盤面和摘要，但不能出手。</li>' +
         '<li>房間裡有<b>聊天室</b>（戰場左下角的 💬），還有每回合 90 秒的思考時間，超過會自動跳過那一回合；對局會一直進行到一方血量歸零，也可以主動投降。</li>' +
         '</ul>' +
-        '<p>右上角的 <b>⚙ 設定</b> 隨時可以調音樂、音效、震動、減少動態與電腦難度。</p>'
+        '<p>右上角的 <b>⚙ 系統設定</b> 可調整全域的音樂、音效、震動與顯示偏好；進入對戰後，戰場上方會出現 <b>🎮 對戰設定</b>。</p>'
     }
   ];
 
@@ -259,6 +261,7 @@
     renderHp(ctx);
     renderTurnbar(ctx);
     renderControls(ctx);
+    syncBattleSettingsUi(ctx);
     renderStageItems(ctx);
     renderSummary(ctx);
     renderOverlay(ctx);
@@ -380,6 +383,32 @@
     }
   }
 
+  function syncBattleSettingsUi(ctx) {
+    var toggle = $('b-battle-settings');
+    if (!toggle) return;
+    var visible = app.screen === 's-battle' && !!(ctx && ctx.game);
+    toggle.hidden = !visible;
+    toggle.setAttribute('aria-expanded', visible && isBattleSettingsOpen() ? 'true' : 'false');
+    if (!visible) {
+      if (isBattleSettingsOpen()) closeBattleSettings();
+      return;
+    }
+
+    var playing = (app.mode === 'solo' && app.solo.state) || (app.mode === 'online' && app.online.view);
+    var soloCanRestart = app.mode === 'solo' && app.solo.state;
+    var soloCanSurrender = app.mode === 'solo' && app.solo.state && !app.solo.state.over && !app.busy;
+    var onlineCanSurrender = app.mode === 'online' && app.online.view && app.online.view.you &&
+      app.online.view.you.can && app.online.view.you.can.surrender;
+    $('battle-settings-restart').disabled = !soloCanRestart;
+    $('battle-settings-surrender').disabled = !(soloCanSurrender || onlineCanSurrender);
+    $('battle-settings-quit').disabled = !playing;
+    $('battle-settings-game-note').textContent = !playing
+      ? '目前沒有進行中的對戰。'
+      : (app.mode === 'solo'
+        ? '單機對戰中：重新開始會換一張新地圖；「投降」會直接判定你落敗。'
+        : '線上對戰中：「投降」或離開房間，都會讓對手獲勝。');
+  }
+
   /** 把雙方剩餘道具放到天空左右兩側；自己的按鈕可以直接選用，對手的只供查看。 */
   function renderStageItems(ctx) {
     var hud = $('stage-items');
@@ -480,7 +509,10 @@
           ? '時間到，這回合跳過'
           : (s.result === 'surrender'
             ? '主動投降，對局結束'
-            : ('方向依箭頭 · 力道 ' + s.power + ' · 風 ' + Rules.describeWind(s.wind)));
+            : ((s.critical ? '💥 爆擊！' : '') +
+              (s.hitPart ? ((s.critical ? ' ' : '') + (Rules.HIT_PART_LABEL[s.hitPart] || '部位') + '命中') : '') +
+              (s.critical || s.hitPart ? ' · ' : '') +
+              '方向依箭頭 · 力道 ' + s.power + ' · 風 ' + Rules.describeWind(s.wind)));
         var outcome = s.result === 'pass' ? '' :
           (Rules.RESULT_TEXT[s.result] || '') +
           (hitting ? '，' + Rules.SIDE_LABEL[foe] + ' -' + s.damage[foe] : '') +
@@ -1089,6 +1121,8 @@
       n: shot.n, side: shot.side, angle: shot.angle, power: shot.power, wind: shot.wind,
       item: shot.item || null,
       result: shot.result, damage: shot.damage, hpAfter: shot.hpAfter, distance: shot.distance,
+      hitParts: shot.hitParts || { cat: null, dog: null }, hitPart: shot.hitPart || null,
+      critical: !!shot.critical,
       aiLevel: aiLevel || null, text: Rules.describeShot(shot)
     };
   }
@@ -1117,6 +1151,9 @@
 
     var text = Rules.RESULT_TEXT[shot.result] || '';
     var dmg = shot.damage ? shot.damage[foe] : 0;
+    var hitPart = shot.hitPart || (shot.hitParts && shot.hitParts[foe]);
+    if (shot.critical) text = '💥 爆擊！' + (hitPart ? ' ' + (Rules.HIT_PART_LABEL[hitPart] || '部位') + '命中' : '') + '　' + text;
+    else if (hitPart) text = (Rules.HIT_PART_LABEL[hitPart] || '部位') + '命中　' + text;
     if (dmg > 0) text += '　' + Rules.SIDE_LABEL[foe] + ' -' + dmg;
     else if (shot.distance !== null && shot.distance !== undefined) text += '　距離對手約 ' + Math.round(shot.distance);
     toast(Rules.SIDE_LABEL[shot.side] + '：' + text, dmg > 0 ? 'ok' : 'info');
@@ -1388,8 +1425,10 @@
   /* ============================================================ 設定彈窗 */
 
   var settingsOpener = null;
+  var battleSettingsOpener = null;
 
   function openSettings() {
+    if (isBattleSettingsOpen()) closeBattleSettings();
     settingsOpener = document.activeElement;
     var modal = $('settings-modal');
     modal.classList.add('open');
@@ -1416,11 +1455,44 @@
 
   function isSettingsOpen() { return $('settings-modal').classList.contains('open'); }
 
+  function openBattleSettings() {
+    var ctx = currentCtx();
+    if (app.screen !== 's-battle' || !ctx || !ctx.game) return;
+    battleSettingsOpener = document.activeElement;
+    var modal = $('battle-settings-modal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    $('b-battle-settings').setAttribute('aria-expanded', 'true');
+    syncBattleSettingsUi(ctx);
+    setTimeout(function () { $('battle-settings-panel').focus(); }, 20);
+    document.addEventListener('keydown', trapFocus, true);
+  }
+
+  function closeBattleSettings() {
+    var modal = $('battle-settings-modal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    $('b-battle-settings').setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', trapFocus, true);
+    var back = (battleSettingsOpener && battleSettingsOpener.focus && battleSettingsOpener !== document.body)
+      ? battleSettingsOpener : $('b-battle-settings');
+    if (!back || back.hidden) back = $('b-settings');
+    if (back && back.focus) back.focus();
+    battleSettingsOpener = null;
+  }
+
+  function isBattleSettingsOpen() { return $('battle-settings-modal').classList.contains('open'); }
+
   function trapFocus(e) {
-    if (!isSettingsOpen()) return;
-    if (e.key === 'Escape') { e.preventDefault(); closeSettings(); return; }
+    var panel = null;
+    if (isSettingsOpen()) {
+      panel = $('settings-panel');
+      if (e.key === 'Escape') { e.preventDefault(); closeSettings(); return; }
+    } else if (isBattleSettingsOpen()) {
+      panel = $('battle-settings-panel');
+      if (e.key === 'Escape') { e.preventDefault(); closeBattleSettings(); return; }
+    } else return;
     if (e.key !== 'Tab') return;
-    var panel = $('settings-panel');
     var focusables = panel.querySelectorAll('button, input, select, [tabindex]:not([tabindex="-1"])');
     var list = [];
     for (var i = 0; i < focusables.length; i++) {
@@ -1446,21 +1518,7 @@
     $('settings-motion').checked = Store.reduceMotion();
     $('settings-trail').checked = Store.showTrail();
     $('settings-nick').value = Store.nick();
-    $('settings-ai').value = Store.aiLevel();
     $('settings-server-url').textContent = Config.describe();
-
-    var playing = (app.mode === 'solo' && app.solo.state) || (app.mode === 'online' && app.online.view);
-    var soloCanSurrender = app.mode === 'solo' && app.solo.state && !app.solo.state.over && !app.busy;
-    var onlineCanSurrender = app.mode === 'online' && app.online.view && app.online.view.you &&
-      app.online.view.you.can && app.online.view.you.can.surrender;
-    $('settings-restart').disabled = app.mode !== 'solo' || !app.solo.state;
-    $('settings-surrender').disabled = !(soloCanSurrender || onlineCanSurrender);
-    $('settings-quit').disabled = !playing;
-    $('settings-game-note').textContent = !playing
-      ? '目前沒有進行中的對局。'
-      : (app.mode === 'solo'
-        ? '單機對戰中：重新開始會換一張新地圖；「投降」會直接判定你落敗。'
-        : '線上對戰中：重新開始要由房主在房間裡按「再來一局」；「投降」或對局中離開房間，都會讓對手獲勝。');
   }
 
   function applyMotion() {
@@ -1578,7 +1636,6 @@
       $('b-aside-toggle').focus();
       Sound.play('click');
     });
-
     /* 控制列 */
     var stepAngle = function (d) { setAim(app.aim.angle + d, app.aim.power); };
     var stepPower = function (d) { setAim(app.aim.angle, app.aim.power + d); };
@@ -1752,20 +1809,25 @@
         Online.send('room:join', { code: app.online.code, name: Store.nick() });
       }
     });
-    $('settings-ai').addEventListener('change', function () { Store.aiLevel(this.value); syncSoloSetup(); });
-    $('settings-restart').addEventListener('click', function () {
-      closeSettings();
+    $('b-battle-settings').addEventListener('click', function () { Sound.play('click'); openBattleSettings(); });
+    $('battle-settings-close').addEventListener('click', function () { Sound.play('click'); closeBattleSettings(); });
+    $('battle-settings-done').addEventListener('click', function () { Sound.play('click'); closeBattleSettings(); });
+    document.querySelectorAll('[data-battle-settings-close]').forEach(function (el) {
+      el.addEventListener('click', closeBattleSettings);
+    });
+    $('battle-settings-restart').addEventListener('click', function () {
+      closeBattleSettings();
       startSolo({ side: app.solo.mySide, level: Store.aiLevel() });
     });
-    $('settings-surrender').addEventListener('click', function () {
+    $('battle-settings-surrender').addEventListener('click', function () {
       if (!w.confirm('確定要投降嗎？投降後對手會直接獲勝。')) return;
-      closeSettings();
+      closeBattleSettings();
       Sound.play('click');
       if (app.mode === 'online') Online.send('room:surrender');
       else soloSurrender();
     });
-    $('settings-quit').addEventListener('click', function () {
-      closeSettings();
+    $('battle-settings-quit').addEventListener('click', function () {
+      closeBattleSettings();
       if (app.mode === 'online') leaveRoom();
       else { clearTimeout(app.solo.aiTimer); app.mode = null; show('s-home'); }
     });
@@ -1787,7 +1849,7 @@
 
     /* 鍵盤操作 */
     document.addEventListener('keydown', function (e) {
-      if (isSettingsOpen()) return;
+      if (isSettingsOpen() || isBattleSettingsOpen()) return;
       if (app.screen !== 's-battle') return;
       var tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;

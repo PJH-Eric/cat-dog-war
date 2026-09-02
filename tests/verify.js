@@ -244,9 +244,9 @@ test('legalActions 只在自己的回合列出可執行行動', () => {
 group('4. 傷害判定與勝負');
 
 test('一般直接命中判定較舊版寬鬆，大骨頭仍然更容易命中', () => {
-  assert.strictEqual(C.HIT_R, 30);
+  assert.strictEqual(C.HIT_R, 34);
   assert.ok(C.HIT_R > 22, '一般命中半徑應該比舊版 22 大');
-  assert.strictEqual(Rules.modOf('bigbone').hitR, 42);
+  assert.strictEqual(Rules.modOf('bigbone').hitR, 48);
   assert.ok(Rules.modOf('bigbone').hitR > C.HIT_R);
 });
 
@@ -254,6 +254,8 @@ test('直接命中造成最大傷害', () => {
   const st = Rules.createState({ seed: 'DMGAAA', first: 'cat' });
   const dog = st.fighters.dog;
   const d = Rules.damageAt(dog.x, dog.y + C.BODY_H, dog);
+  assert.strictEqual(d.part, 'body');
+  assert.strictEqual(d.critical, false);
   assert.strictEqual(d.damage, C.MAX_DAMAGE);
 });
 
@@ -266,6 +268,22 @@ test('爆炸傷害隨距離遞減，超過範圍為 0', () => {
   assert.strictEqual(core, C.MAX_DAMAGE);
   assert.ok(mid > 0 && mid < C.MAX_DAMAGE, '中距離應該是部分傷害，實際 ' + mid);
   assert.strictEqual(far, 0, '超出範圍不應該有傷害');
+});
+
+test('命中部位會改變傷害，頭部較痛、腿部較輕', () => {
+  const st = Rules.createState({ seed: 'PARTAA', first: 'cat' });
+  const dog = st.fighters.dog;
+  const body = Rules.damageAt(dog.x, dog.y + C.BODY_H, dog);
+  const head = Rules.damageAt(dog.x, dog.y + C.HEAD_Y_MIN, dog);
+  const legs = Rules.damageAt(dog.x, dog.y + C.LEG_Y_MAX, dog);
+  assert.strictEqual(body.part, 'body');
+  assert.strictEqual(body.damage, C.MAX_DAMAGE);
+  assert.strictEqual(head.part, 'head');
+  assert.strictEqual(head.damage, Math.round(C.MAX_DAMAGE * C.HEAD_DAMAGE_MULTIPLIER));
+  assert.strictEqual(head.critical, true);
+  assert.strictEqual(legs.part, 'legs');
+  assert.strictEqual(legs.damage, Math.round(C.MAX_DAMAGE * C.LEG_DAMAGE_MULTIPLIER));
+  assert.strictEqual(legs.critical, false);
 });
 
 test('直接命中會扣血並記錄在 shot 裡', () => {
@@ -288,8 +306,10 @@ test('直接命中會扣血並記錄在 shot 裡', () => {
   const r = Rules.applyShot(st, 'cat', { angle: hit.a, power: hit.p });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.shot.result, 'direct');
-  assert.strictEqual(r.shot.damage.dog, C.MAX_DAMAGE);
-  assert.strictEqual(r.state.fighters.dog.hp, C.MAX_HP - C.MAX_DAMAGE);
+  assert.ok(r.shot.damage.dog > 0);
+  assert.ok(['head', 'body', 'legs'].includes(r.shot.hitPart));
+  assert.strictEqual(r.shot.damage.dog, Rules.damageAt(r.shot.impact.x, r.shot.impact.y, st.fighters.dog).damage);
+  assert.strictEqual(r.state.fighters.dog.hp, C.MAX_HP - r.shot.damage.dog);
   assert.strictEqual(r.state.turn, 'dog', '出手後應該換對手');
   assert.strictEqual(r.state.turnNo, 2);
   assert.strictEqual(r.state.version, 1);
@@ -308,10 +328,14 @@ test('血量歸零就結束，勝負與原因正確', () => {
   for (let a = 10; a <= 80 && !hit; a += 1) {
     for (let p = 20; p <= 100; p += 1) {
       const sim = Rules.simulate(st, 'cat', a, p, { trace: false });
-      if (sim.impact.type === 'fighter' && sim.impact.target === 'dog') { hit = { a, p }; break; }
+      if (sim.impact.type === 'fighter' && sim.impact.target === 'dog') { hit = { a, p, sim }; break; }
     }
   }
-  const r = Rules.applyShot(st, 'cat', hit ? { angle: hit.a, power: hit.p } : { angle: 45, power: 50 });
+  assert.ok(hit, '應該存在一組能直接命中的角度與力道');
+  const preview = Rules.damageAt(hit.sim.impact.x, hit.sim.impact.y, st.fighters.dog);
+  assert.ok(preview.damage > 0, '命中預覽應該造成傷害');
+  st.fighters.dog.hp = preview.damage;
+  const r = Rules.applyShot(st, 'cat', { angle: hit.a, power: hit.p });
   assert.strictEqual(r.state.fighters.dog.hp, 0);
   assert.strictEqual(r.state.over, true);
   assert.strictEqual(r.state.winner, 'cat');
@@ -393,8 +417,8 @@ test('describeShot 產生可讀的中文摘要', () => {
   const text = Rules.describeShot(r.shot);
   assert.ok(text.includes('第 1 回合'));
   assert.ok(text.includes('貓咪'));
-  assert.ok(text.includes('角度'));
   assert.ok(text.includes('力道'));
+  assert.ok(!/角度\s*\d+°/.test(text), '摘要不應顯示可直接複製的角度數字：' + text);
 });
 
 /* ================================================ 5. 固定地形與固定站位 */
@@ -866,7 +890,8 @@ test('輪到誰才能發射，出手後換人', () => {
   const good = room.fire(firstId, { angle: 45, power: 60 }, T0 + 1000);
   assert.strictEqual(good.ok, true);
   assert.strictEqual(room.summary.length, 1);
-  assert.ok(room.summary[0].text.includes('角度'));
+  assert.ok(room.summary[0].text.includes('力道'));
+  assert.ok(!/角度\s*\d+°/.test(room.summary[0].text));
   assert.notStrictEqual(room.state.turn, first);
   assert.strictEqual(room.turnDeadline, T0 + 1000 + 90000);
 });

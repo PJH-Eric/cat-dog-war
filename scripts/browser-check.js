@@ -393,6 +393,9 @@ async function main() {
     const modal = await cdp.json('({open:document.getElementById("settings-modal").classList.contains("open"),focus:document.activeElement.id,aria:document.getElementById("settings-modal").getAttribute("aria-hidden")})');
     check(v.name + '：設定是彈窗、焦點進入面板、aria 正確',
       modal.open && modal.focus === 'settings-panel' && modal.aria === 'false', JSON.stringify(modal));
+    const systemSeparation = await cdp.json('({hasBattleActions:!!document.querySelector("#settings-modal #battle-settings-restart") || !!document.querySelector("#settings-modal #battle-settings-surrender") || !!document.querySelector("#settings-modal #battle-settings-quit"),battleOpen:document.getElementById("battle-settings-modal").classList.contains("open")})');
+    check(v.name + '：系統設定不混入本局對戰操作',
+      !systemSeparation.hasBattleActions && !systemSeparation.battleOpen, JSON.stringify(systemSeparation));
     await shot(v.name + '-3-設定彈窗');
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -415,6 +418,9 @@ async function main() {
     await cdp.waitFor('window.CatDogApp.screen === "s-battle" && window.CatDogApp.solo.state', 6000, '進入戰場');
     await sleep(500);
     info = await cdp.json('window.__probe.layout()');
+    const battleSettingsButton = await cdp.json('({hidden:document.getElementById("b-battle-settings").hidden,aria:document.getElementById("b-battle-settings").getAttribute("aria-expanded")})');
+    check(v.name + '：進入對戰後才顯示對戰設定入口',
+      battleSettingsButton.hidden === false && battleSettingsButton.aria === 'false', JSON.stringify(battleSettingsButton));
     assertLayout('戰場', v, info);
     const st = await cdp.json('window.__probe.stage()');
     /* 畫布寬高比不可以比世界更寬（否則代表地面被切掉），而且要塞得進舞台。
@@ -604,6 +610,18 @@ async function main() {
   await cdp.waitFor('window.CatDogApp.solo.state && !window.CatDogApp.solo.state.over', 8000, '再玩一局');
   check('單機：再玩一局會重新開局',
     (await cdp.json('window.__probe.game()')).turnNo === 1);
+
+  /* 對戰設定獨立於全域系統設定，且只在戰場入口可開啟。 */
+  await cdp.eval('window.__probe.click("#b-battle-settings"); return 1;');
+  await sleep(250);
+  const battleModal = await cdp.json('({open:document.getElementById("battle-settings-modal").classList.contains("open"),focus:document.activeElement.id,aria:document.getElementById("battle-settings-modal").getAttribute("aria-hidden"),systemOpen:document.getElementById("settings-modal").classList.contains("open")})');
+  check('對戰設定：獨立彈窗且不會打開系統設定',
+    battleModal.open && battleModal.focus === 'battle-settings-panel' && battleModal.aria === 'false' && !battleModal.systemOpen,
+    JSON.stringify(battleModal));
+  check('對戰設定：本局操作集中在對戰彈窗',
+    await cdp.eval('return !!document.querySelector("#battle-settings-modal #battle-settings-restart") && !!document.querySelector("#battle-settings-modal #battle-settings-surrender") && !!document.querySelector("#battle-settings-modal #battle-settings-quit");'));
+  await cdp.eval('window.__probe.click("#battle-settings-done"); return 1;');
+  await sleep(200);
 
   /* 設定保存 */
   await cdp.eval('window.__probe.click("#b-settings"); return 1;');

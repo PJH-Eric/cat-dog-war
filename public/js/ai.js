@@ -176,12 +176,8 @@
     var sim = Rules.simulate(state, side, angle, power, { wind: wind, trace: false, mod: mod });
     var imp = sim.impact;
     if (imp.type === 'out' || imp.type === 'timeout') return { foe: 0, self: 0 };
-    var dFoe = (imp.type === 'fighter' && imp.target === foe)
-      ? mod.maxDamage
-      : Rules.damageAt(imp.x, imp.y, state.fighters[foe], mod).damage;
-    var dSelf = (imp.type === 'fighter' && imp.target === side)
-      ? mod.maxDamage
-      : Rules.damageAt(imp.x, imp.y, state.fighters[side], mod).damage;
+    var dFoe = Rules.damageAt(imp.x, imp.y, state.fighters[foe], mod).damage;
+    var dSelf = Rules.damageAt(imp.x, imp.y, state.fighters[side], mod).damage;
     /* 雙擊是同一條彈道丟兩次，所以傷害直接乘上發數 */
     return { foe: dFoe * mod.shots, self: dSelf * mod.shots };
   }

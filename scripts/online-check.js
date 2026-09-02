@@ -401,9 +401,10 @@ async function main() {
     check('觀戰者也看得到完整操作摘要',
       watcher.view.room.summary.length === host.view.room.summary.length);
     const entry = host.view.room.summary[0];
-    check('摘要每一筆都有角度、力道、風向與結果文字',
+    check('摘要每一筆都有力道、風向與結果文字，且不顯示角度數字',
       entry && typeof entry.angle === 'number' && typeof entry.power === 'number' &&
-      typeof entry.wind === 'number' && typeof entry.text === 'string' && entry.text.includes('角度'),
+      typeof entry.wind === 'number' && typeof entry.text === 'string' && entry.text.includes('力道') &&
+      !/角度\s*\d+°/.test(entry.text),
       JSON.stringify(entry));
     check('三方收到的彈道事件數量一致',
       host.shots.length === guest.shots.length && guest.shots.length === watcher.shots.length,

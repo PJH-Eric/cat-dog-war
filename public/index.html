@@ -15,9 +15,9 @@
 
 <div id="app">
 
-  <!-- 右上角固定設定入口：所有畫面共用同一顆按鈕，位置在安全區內 -->
+  <!-- 右上角固定系統設定入口：所有畫面共用，位置在安全區內 -->
   <button class="btn3d icononly settings-fab" data-color="cream" id="b-settings" type="button"
-          title="開啟遊戲設定" aria-label="開啟遊戲設定" aria-haspopup="dialog"
+          title="開啟系統設定" aria-label="開啟系統設定" aria-haspopup="dialog"
           aria-controls="settings-modal" aria-expanded="false">⚙</button>
 
   <!-- ============================== 主選單 ============================== -->
@@ -201,6 +201,9 @@
 
           <button class="btn3d small icononly aside-toggle" data-color="lemon" id="b-aside-toggle"
                   title="開啟左側操作摘要" aria-label="開啟左側操作摘要" aria-expanded="false" aria-controls="battle-aside">📋</button>
+          <button class="btn3d small icononly battle-settings-toggle" data-color="sky" id="b-battle-settings"
+                  title="開啟對戰設定" aria-label="開啟對戰設定" aria-haspopup="dialog"
+                  aria-controls="battle-settings-modal" aria-expanded="false" hidden>🎮</button>
         </header>
 
         <div class="hpbars">
@@ -319,15 +322,15 @@
     </div>
   </section>
 
-  <!-- ============================== 設定彈窗 ============================== -->
+  <!-- ============================== 系統設定彈窗 ============================== -->
   <div class="settings-modal" id="settings-modal" role="dialog" aria-modal="true"
        aria-labelledby="settings-title" aria-hidden="true">
     <div class="settings-backdrop" data-settings-close></div>
     <section class="settings-panel" id="settings-panel" tabindex="-1">
       <div class="settings-head">
         <span class="settings-badge" aria-hidden="true">⚙</span>
-        <h2 id="settings-title">遊戲設定</h2>
-        <button class="settings-close" id="settings-close" type="button" aria-label="關閉遊戲設定">✕</button>
+        <h2 id="settings-title">系統設定</h2>
+        <button class="settings-close" id="settings-close" type="button" aria-label="關閉系統設定">✕</button>
       </div>
 
       <div class="settings-body" id="settings-body" tabindex="0" role="group" aria-label="設定項目">
@@ -373,29 +376,11 @@
         </div>
 
         <div class="settings-group">
-          <h3><span class="gico" aria-hidden="true">🐾</span>對局</h3>
+          <h3><span class="gico" aria-hidden="true">🌐</span>個人與連線</h3>
           <label class="setting-text" for="settings-nick">
             <span><b>我的暱稱</b><small>線上房間裡別人看到的名字</small></span>
             <input id="settings-nick" type="text" maxlength="12" autocomplete="off" spellcheck="false">
           </label>
-          <label class="setting-text" for="settings-ai">
-            <span><b>電腦難度</b><small>單機對戰與線上補位的電腦對手</small></span>
-            <select id="settings-ai">
-              <option value="easy">簡單</option>
-              <option value="normal">普通</option>
-              <option value="hard">困難</option>
-            </select>
-          </label>
-          <div class="setting-btns">
-            <button class="btn3d small" data-color="lemon" id="settings-restart" type="button">🔁 重新開始這一局</button>
-            <button class="btn3d small" data-color="peach" id="settings-surrender" type="button">🏳️ 投降</button>
-            <button class="btn3d small" data-color="peach" id="settings-quit" type="button">🚪 離開房間</button>
-          </div>
-          <p class="settings-note" id="settings-game-note">目前沒有進行中的對局。</p>
-        </div>
-
-        <div class="settings-group">
-          <h3><span class="gico" aria-hidden="true">🌐</span>連線</h3>
           <div class="setting-static">
             <span><b>遊戲伺服器</b><small id="settings-server-url">—</small></span>
             <span class="server-pill" id="settings-server-pill" data-state="unset">未檢查</span>
@@ -410,6 +395,35 @@
       <div class="settings-foot">
         <button class="btn3d small settings-reset" data-color="gray" id="settings-reset" type="button">恢復預設</button>
         <button class="btn3d settings-done" data-color="mint" id="settings-done" type="button">完成</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============================== 對戰設定彈窗 ============================== -->
+  <div class="settings-modal" id="battle-settings-modal" role="dialog" aria-modal="true"
+       aria-labelledby="battle-settings-title" aria-hidden="true">
+    <div class="settings-backdrop" data-battle-settings-close></div>
+    <section class="settings-panel" id="battle-settings-panel" tabindex="-1">
+      <div class="settings-head">
+        <span class="settings-badge" aria-hidden="true">🎮</span>
+        <h2 id="battle-settings-title">對戰設定</h2>
+        <button class="settings-close" id="battle-settings-close" type="button" aria-label="關閉對戰設定">✕</button>
+      </div>
+
+      <div class="settings-body" id="battle-settings-body" tabindex="0" role="group" aria-label="本局對戰操作">
+        <div class="settings-group">
+          <h3><span class="gico" aria-hidden="true">🏳️</span>本局操作</h3>
+          <div class="setting-btns">
+            <button class="btn3d small" data-color="lemon" id="battle-settings-restart" type="button">🔁 重新開始這一局</button>
+            <button class="btn3d small" data-color="peach" id="battle-settings-surrender" type="button">🏳️ 投降</button>
+            <button class="btn3d small" data-color="peach" id="battle-settings-quit" type="button">🚪 離開對戰</button>
+          </div>
+          <p class="settings-note" id="battle-settings-game-note">目前沒有進行中的對戰。</p>
+        </div>
+      </div>
+
+      <div class="settings-foot">
+        <button class="btn3d settings-done" data-color="mint" id="battle-settings-done" type="button">完成</button>
       </div>
     </section>
   </div>

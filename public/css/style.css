@@ -214,8 +214,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   padding:calc(4px + var(--safe-t)) 8px calc(4px + var(--safe-b)) calc(8px + var(--safe-l));
 }
 
-/* 上排：離開鈕、回合／風向／倒數、左側摘要開關。右側留白給固定的設定鈕。 */
-.battle-top{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding-right:112px}
+/* 上排：離開鈕、回合／風向／倒數、左側摘要開關。右側留白給兩種設定鈕。 */
+.battle-top{display:flex;align-items:center;gap:6px;flex:0 0 auto;padding-right:166px}
 /* 第二排：兩張血量卡各佔一半，窄畫面也還有空間放頭像、名字與血條 */
 .hpbars{flex:0 0 auto;display:flex;align-items:center;gap:6px;min-width:0;margin-top:3px}
 .hpcard{
@@ -254,6 +254,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
 .chip-timer{background:var(--lemon)}
 .chip-timer[data-urgent=true]{background:var(--danger-bg);border-color:var(--danger);color:var(--danger)}
 .aside-toggle{position:absolute;z-index:71;top:calc(4px + var(--safe-t));left:calc(70px + var(--safe-l))}
+.battle-settings-toggle{position:absolute;z-index:71;top:calc(4px + var(--safe-t));right:calc(68px + var(--safe-r))}
 
 /* 戰場畫布 */
 .stage{
@@ -607,7 +608,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 /* 橫向且高度很矮（手機橫向）：把裝飾與留白壓到最低，先保住戰場與控制 */
 @media (orientation:landscape) and (max-height:520px){
   .battle-main{padding-top:calc(4px + var(--safe-t));padding-bottom:calc(4px + var(--safe-b))}
-  .battle-top{gap:6px;padding-right:112px}
+  .battle-top{gap:6px;padding-right:166px}
   .hpface{width:28px;height:28px}
   .hpname{font-size:.72rem}
   .hpbar{height:10px}

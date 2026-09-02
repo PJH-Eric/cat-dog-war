@@ -57,16 +57,20 @@
     STAND_H: 46,
 
     MUZZLE_FWD: 26,      // 砲口相對角色中心的前伸距離
-    MUZZLE_UP: 34,       // 砲口相對角色腳底的高度
+    MUZZLE_UP: 48,       // 砲口相對角色腳底的高度（配合放大的角色）
     SELF_SAFE_STEPS: 14, // 前幾步不判定打到自己，免得一出膛就自爆
 
-    HIT_R: 30,           // 直接命中角色的判定半徑；比角色輪廓略寬，降低擦身未中的挫折感
-    BODY_H: 30,          // 角色身體中心離腳底的高度（傷害距離用）
+    HIT_R: 34,           // 直接命中角色的判定半徑；配合放大後的角色降低擦身未中的挫折感
+    BODY_H: 36,          // 角色身體中心離腳底的高度（傷害距離用）
+    HEAD_Y_MIN: 48,      // 角色局部高度達到這裡算頭部命中
+    LEG_Y_MAX: 23,       // 角色局部高度低於這裡算腿部命中
+    HEAD_DAMAGE_MULTIPLIER: 1.65, // 頭部爆擊，比身體命中更痛
+    LEG_DAMAGE_MULTIPLIER: 0.75,  // 腿部命中，傷害較低
 
     BLAST_R: 84,         // 爆炸傷害範圍
     CORE_R: 30,          // 核心範圍內吃滿傷害
-    /* 滿血 100、滿傷 20 → 至少要五發正中才會分出勝負，打歪幾次還救得回來。 */
-    MAX_DAMAGE: 20,      // 單發最高傷害
+    /* 身體正中基礎 20；頭部爆擊最高約 33，讓命中位置真的有戰術差異。 */
+    MAX_DAMAGE: 20,      // 身體單發最高傷害
 
     MAX_HP: 100,
     HEAL_AMOUNT: 30      // 補血道具一次回多少（約等於一發半的直接命中）
@@ -75,6 +79,7 @@
   var SIDES = ['cat', 'dog'];
   var SIDE_LABEL = { cat: '貓咪', dog: '狗狗' };
   var AMMO_LABEL = { cat: '毛線球', dog: '骨頭' };
+  var HIT_PART_LABEL = { head: '頭部', body: '身體', legs: '腿部' };
 
   /* -------------------------------------------------------------- 道具 */
 
@@ -460,6 +465,19 @@
     return dx * dx + dy * dy <= r * r;
   }
 
+  function hitPartAt(impactY, fighter) {
+    var localY = impactY - fighter.y;
+    if (localY >= CONST.HEAD_Y_MIN) return 'head';
+    if (localY <= CONST.LEG_Y_MAX) return 'legs';
+    return 'body';
+  }
+
+  function partMultiplier(part) {
+    if (part === 'head') return CONST.HEAD_DAMAGE_MULTIPLIER;
+    if (part === 'legs') return CONST.LEG_DAMAGE_MULTIPLIER;
+    return 1;
+  }
+
   /**
    * 爆炸傷害：核心範圍吃滿，之後線性遞減到 0。
    * 不給 mod 就是沒帶道具的基礎值，所以舊的兩參數呼叫方式仍然成立。
@@ -469,10 +487,18 @@
     var dx = impactX - fighter.x;
     var dy = impactY - (fighter.y + CONST.BODY_H);
     var d = Math.sqrt(dx * dx + dy * dy);
-    if (d >= m.blastR) return { damage: 0, distance: round2(d) };
-    if (d <= m.coreR) return { damage: m.maxDamage, distance: round2(d) };
+    var part = hitPartAt(impactY, fighter);
+    var critical = part === 'head';
+    var partMax = Math.round(m.maxDamage * partMultiplier(part));
+    if (d >= m.blastR) return { damage: 0, distance: round2(d), part: part, critical: false };
+    if (d <= m.coreR) return { damage: partMax, distance: round2(d), part: part, critical: critical };
     var f = 1 - (d - m.coreR) / (m.blastR - m.coreR);
-    return { damage: Math.max(1, Math.round(m.maxDamage * f)), distance: round2(d) };
+    return {
+      damage: Math.max(1, Math.round(partMax * f)),
+      distance: round2(d),
+      part: part,
+      critical: critical
+    };
   }
 
   /* -------------------------------------------------------------- 出手 */
@@ -503,6 +529,8 @@
     var volley = [];
     var nearest = null;
     var anyDirect = false;
+    var hitParts = { cat: null, dog: null };
+    var critical = false;
 
     /* 雙擊會跑兩趟。地形不會被炸壞、貓狗也不會移動，所以第二發是完全相同的
      * 彈道與落點 —— 效果就是這一回合的傷害直接加倍。 */
@@ -512,14 +540,26 @@
 
       var sim = simulate(next, side, angle, power, { trace: true, mod: mod });
       var dmg = { cat: 0, dog: 0 };
+      var volleyParts = { cat: null, dog: null };
+      var volleyCritical = false;
       var dist = null;
 
       if (sim.impact.type === 'fighter') {
-        /* 直接命中：本人吃滿傷害，旁邊的另一位照爆炸範圍算 */
+        /* 直接命中：依頭／身體／腿部決定傷害，旁邊的另一位照爆炸範圍算 */
         var direct = sim.impact.target;
-        dmg[direct] = mod.maxDamage;
+        var directHit = damageAt(sim.impact.x, sim.impact.y, next.fighters[direct], mod);
+        dmg[direct] = directHit.damage;
+        if (directHit.damage > 0) {
+          volleyParts[direct] = directHit.part;
+          volleyCritical = volleyCritical || directHit.critical;
+        }
         var bystander = other(direct);
-        dmg[bystander] = damageAt(sim.impact.x, sim.impact.y, next.fighters[bystander], mod).damage;
+        var bystanderHit = damageAt(sim.impact.x, sim.impact.y, next.fighters[bystander], mod);
+        dmg[bystander] = bystanderHit.damage;
+        if (bystanderHit.damage > 0) {
+          volleyParts[bystander] = bystanderHit.part;
+          volleyCritical = volleyCritical || bystanderHit.critical;
+        }
         dist = 0;
         if (direct === foeSide) anyDirect = true;
       } else if (sim.impact.type === 'ground') {
@@ -527,6 +567,14 @@
         var dd = damageAt(sim.impact.x, sim.impact.y, next.fighters.dog, mod);
         dmg.cat = dc.damage;
         dmg.dog = dd.damage;
+        if (dc.damage > 0) {
+          volleyParts.cat = dc.part;
+          volleyCritical = volleyCritical || dc.critical;
+        }
+        if (dd.damage > 0) {
+          volleyParts.dog = dd.part;
+          volleyCritical = volleyCritical || dd.critical;
+        }
         dist = (side === 'cat') ? dd.distance : dc.distance;
       }
       /* 飛出界或逾時：什麼都沒發生 */
@@ -536,12 +584,17 @@
 
       total.cat += dmg.cat;
       total.dog += dmg.dog;
+      if (volleyParts.cat) hitParts.cat = hitParts.cat || volleyParts.cat;
+      if (volleyParts.dog) hitParts.dog = hitParts.dog || volleyParts.dog;
+      critical = critical || volleyCritical;
       if (dist !== null && (nearest === null || dist < nearest)) nearest = dist;
 
       volley.push({
         points: sim.points,
         impact: sim.impact,
         damage: dmg,
+        hitParts: volleyParts,
+        critical: volleyCritical,
         distance: dist,
         flightTime: sim.flightTime,
         apex: sim.apex
@@ -572,6 +625,9 @@
       item: item,
       result: result,
       damage: { cat: total.cat, dog: total.dog },
+      hitParts: hitParts,
+      hitPart: hitParts[foeSide],
+      critical: critical,
       hpAfter: { cat: next.fighters.cat.hp, dog: next.fighters.dog.hp },
       distance: nearest,
       /* volley 是這一回合實際飛出去的每一發：一般 1 發，雙擊 2 發。
@@ -586,7 +642,8 @@
 
     next.lastShot = {
       n: shot.n, side: shot.side, angle: shot.angle, power: shot.power, item: item,
-      result: shot.result, damage: shot.damage, distance: shot.distance, impact: shot.impact
+      result: shot.result, damage: shot.damage, hitParts: shot.hitParts, hitPart: shot.hitPart,
+      critical: shot.critical, distance: shot.distance, impact: shot.impact
     };
     next.version = state.version + 1;
 
@@ -796,7 +853,11 @@
     }
     var foe = other(shot.side);
     var used = ITEMS[shot.item] ? ('、道具 ' + ITEMS[shot.item].icon + ' ' + ITEMS[shot.item].label) : '';
-    var head = '第 ' + shot.n + ' 回合 ' + who + '：角度 ' + shot.angle + '°、力道 ' + shot.power +
+    var hitPart = shot.hitPart || (shot.hitParts && shot.hitParts[foe]);
+    var hitNote = hitPart ? ((HIT_PART_LABEL[hitPart] || '部位') + '命中') : '';
+    if (shot.critical) hitNote = '💥 爆擊！' + (hitNote ? ' ' + hitNote : '');
+    var head = '第 ' + shot.n + ' 回合 ' + who + '：' +
+      (hitNote ? hitNote + '、' : '') + '力道 ' + shot.power +
       '、風 ' + describeWind(shot.wind) + used;
     var tail = RESULT_TEXT[shot.result] || '';
     if (shot.item === 'double' && shot.volley && shot.volley.length > 1) tail = '連丟兩發，' + tail;
@@ -823,6 +884,7 @@
     SIDES: SIDES,
     SIDE_LABEL: SIDE_LABEL,
     AMMO_LABEL: AMMO_LABEL,
+    HIT_PART_LABEL: HIT_PART_LABEL,
     RESULT_TEXT: RESULT_TEXT,
     ITEMS: ITEMS,
     ITEM_ORDER: ITEM_ORDER,
@@ -841,6 +903,7 @@
     legalActions: legalActions,
     simulate: simulate,
     damageAt: damageAt,
+    hitPartAt: hitPartAt,
     applyShot: applyShot,
     applyPass: applyPass,
     applySurrender: applySurrender,
