@@ -79,6 +79,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   --d:6px;
 }
 .settings-fab .b3-lbl{font-size:1.3rem}
+.lobby-home-link{position:fixed;z-index:65;top:calc(10px + var(--safe-t));left:calc(12px + var(--safe-l));display:inline-flex;align-items:center;min-height:44px;padding:9px 14px;border:3px solid var(--ink);border-radius:14px;background:var(--cream);color:var(--ink);font-size:.8rem;font-weight:900;text-decoration:none;box-shadow:0 4px 0 var(--cream-d);transition:transform .15s,box-shadow .15s,background .15s}
+.lobby-home-link:hover{background:#FFF6E8;transform:translateY(-2px)}
+.lobby-home-link:active{transform:translateY(3px);box-shadow:0 1px 0 var(--cream-d)}
+.lobby-home-link:focus-visible{outline:3px solid var(--sky-d);outline-offset:3px}
+@media (max-width:600px){
+  #s-home .home-wrap{padding-top:max(70px,10vh)}
+  .lobby-home-link{top:calc(8px + var(--safe-t));left:calc(8px + var(--safe-l));padding:8px 10px;font-size:.74rem}
+}
 
 /* ---------- 通用面板 ---------- */
 .panel{
