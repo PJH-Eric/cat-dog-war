@@ -79,7 +79,7 @@
 
   var SIDES = ['cat', 'dog'];
   var SIDE_LABEL = { cat: '貓咪', dog: '狗狗' };
-  var AMMO_LABEL = { cat: '毛線球', dog: '骨頭' };
+  var AMMO_LABEL = { cat: '砲彈', dog: '砲彈' };
   var HIT_PART_LABEL = { head: '頭部', body: '身體', legs: '腿部' };
 
   /* -------------------------------------------------------------- 道具 */

@@ -374,6 +374,16 @@
       '</g></svg>';
   }
 
+  /** 圓潤的砲彈：實際飛行時使用，不再用骨頭或 emoji 代替 */
+  function cannonBall() {
+    return '<svg viewBox="0 0 100 100" role="img" aria-label="砲彈">' +
+      '<circle cx="50" cy="50" r="35" fill="#40364F" stroke="' + INK + '" stroke-width="6"/>' +
+      '<circle cx="38" cy="34" r="11" fill="#B8ADBF" opacity="0.72"/>' +
+      '<path d="M26 66 Q50 83 75 66" fill="none" stroke="#695B73" stroke-width="6" stroke-linecap="round" opacity="0.9"/>' +
+      '<circle cx="70" cy="37" r="4" fill="#82758B"/>' +
+      '</svg>';
+  }
+
   /* ======================= 場景：垃圾桶、狗屋、狗糧 ======================= */
 
   /** 開著蓋子的垃圾桶，貓咪站在上面 */
@@ -451,7 +461,7 @@
     setLabel: setLabel, setColor: setColor,
     catFace: catFace, dogFace: dogFace, avatar: avatar,
     catBody: catBody, dogBody: dogBody,
-    yarn: yarn, bone: bone, fishBone: fishBone,
+    yarn: yarn, bone: bone, fishBone: fishBone, cannonBall: cannonBall,
     trashCan: trashCan, dogHouse: dogHouse, dogBowl: dogBowl, house: house,
     logo: logo, trophy: trophy, windArrow: windArrow, bgDeco: bgDeco
   };

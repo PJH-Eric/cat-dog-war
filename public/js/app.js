@@ -20,6 +20,12 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
+  /* 貓咪的放大道具用魚骨頭 SVG；發射出去的飛行物仍由 Board 畫成砲彈。 */
+  function itemIcon(side, key) {
+    if (side === 'cat' && key === 'bigbone') return UI.fishBone();
+    return esc(Rules.ITEMS[key].icon);
+  }
+
   /* ------------------------------------------------------------ 狀態 */
 
   var app = {
@@ -104,7 +110,7 @@
     {
       title: '這是什麼遊戲？',
       html: '<p>一隻貓站在畫面左邊、一隻狗站在右邊，中間隔著一道圍牆。</p>' +
-        '<p>兩邊<b>輪流出手</b>：貓丟毛線球、狗丟骨頭。砲彈會受重力往下掉、受風往旁邊吹，畫出一條拋物線。</p>' +
+        '<p>兩邊<b>輪流出手</b>：貓咪和狗狗都丟砲彈。砲彈會受重力往下掉、受風往旁邊吹，畫出一條拋物線。</p>' +
         '<p>打中對方就扣血：身體是標準傷害，腿部較輕，頭部會出現 <b>💥 爆擊</b> 並造成更高傷害；先把對方血量打到 <b>0</b> 的一方獲勝。</p>'
     },
     {
@@ -457,7 +463,7 @@
           ' type="button" role="radio" data-stage-side="' + side + '" data-stage-item="' + key + '"' +
           ' aria-label="' + esc(Rules.SIDE_LABEL[side] + '的' + it.label + '，剩 ' + n + ' 個。') + '"' +
           ' title="' + esc(it.label + '：' + it.note) + '" aria-checked="' + (selected ? 'true' : 'false') + '"' +
-          (enabled ? '' : ' disabled') + '><span class="ico">' + it.icon +
+          (enabled ? '' : ' disabled') + '><span class="ico">' + itemIcon(side, key) +
           '</span><span class="num">' + n + '</span></button>');
       });
 
@@ -815,7 +821,7 @@
         ' data-item="' + key + '" aria-checked="' + (app.item === key ? 'true' : 'false') + '"' +
         ' aria-label="' + esc(it.label) + '，剩 ' + n + ' 個。' + esc(it.note) + '"' +
         ' title="' + esc(it.label + '：' + it.note) + '"' + (can && !out && !locked ? '' : ' disabled') + '>' +
-        '<span class="ico">' + it.icon + '</span><span class="txt">' + esc(it.label) + '</span>' +
+        '<span class="ico">' + itemIcon(ctx.mySide, key) + '</span><span class="txt">' + esc(it.label) + '</span>' +
         '<span class="num">×' + n + '</span></button>';
     });
     box.innerHTML = html;
@@ -848,7 +854,8 @@
     }
     if (app.item) {
       var it = Rules.ITEMS[app.item];
-      hint(it.icon + ' ' + it.label + ' 已鎖定：' + it.note + ' 可按「↺ 重置」重設角度與力道。');
+      var iconLabel = ctx && ctx.mySide === 'cat' && app.item === 'bigbone' ? '魚骨頭' : it.icon;
+      hint(iconLabel + ' ' + it.label + ' 已鎖定：' + it.note + ' 可按「↺ 重置」重設角度與力道。');
       if (ctx && ctx.mode === 'online') {
         if (!Online.send('room:selectItem', { item: app.item }, function (res) {
           if (res && res.ok) return;

@@ -56,9 +56,9 @@
       inner + '</svg>');
   }
 
-  /* 彈藥：貓丟魚骨頭、狗丟狗骨頭 */
-  function ammoImage(side) {
-    return svgImage('ammo:' + side, side === 'dog' ? UI.bone() : UI.fishBone());
+  /* 彈藥：實際飛行物一律是砲彈；魚骨頭只保留在貓方道具圖示 */
+  function ammoImage() {
+    return svgImage('ammo:cannonball', UI.cannonBall());
   }
 
   /* 場景道具：貓站在開蓋垃圾桶上，狗那一側有房子、狗屋和狗糧 */
@@ -470,10 +470,9 @@
     if (!p) return;
     if (showTrail) drawTrail(pts.slice(0, idx + 1), 0.85);
 
-    var side = anim.shot.side;
     var mod = Rules.modOf(anim.shot.item);
     /* 大骨頭的判定半徑真的比較大，畫面上就要真的比較大顆 */
-    var size = 38 * mod.scale * scale;
+    var size = 42 * mod.scale * scale;
     var spin = reduceMotion ? 0 : anim.i * 0.22;
     ctx.save();
     ctx.translate(sx(p.x), sy(p.y));
@@ -490,10 +489,10 @@
       ctx.restore();
     }
 
-    var img = ammoImage(side);
+    var img = ammoImage();
     if (img.complete && img.naturalWidth) ctx.drawImage(img, -size / 2, -size / 2, size, size);
     else {
-      ctx.fillStyle = side === 'cat' ? '#DCEEF7' : '#FFF7E8';
+      ctx.fillStyle = '#40364F';
       ctx.strokeStyle = '#4A3B55'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
@@ -546,6 +545,69 @@
     ctx.restore();
   }
 
+  function drawExplosion(e, k) {
+    var progress = Math.max(0, Math.min(1, k));
+    var fade = 1 - progress;
+    var radius = e.r * (0.28 + progress * 0.92) * scale;
+    var cx = sx(e.x), cy = sy(e.y);
+    var gas = !!e.tint;
+    var outer = e.tint || '#F26B4B';
+    var warm = gas ? '#E6F5B8' : '#FFE3A0';
+    var core = gas ? '#F8FFE4' : '#FFF7D5';
+
+    ctx.save();
+    ctx.globalAlpha = fade;
+
+    /* 外圈衝擊波：先擴張再淡出，讓命中位置一眼可見 */
+    ctx.strokeStyle = gas ? '#A6CE78' : '#F08A5B';
+    ctx.lineWidth = Math.max(3, 7 * scale * fade);
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 1.28, 0, Math.PI * 2);
+    ctx.stroke();
+
+    /* 放射火花／臭氣尖角 */
+    ctx.strokeStyle = warm;
+    ctx.lineCap = 'round';
+    for (var i = 0; i < 10; i++) {
+      var angle = -Math.PI / 2 + i * Math.PI / 5;
+      var inner = radius * (0.68 + (i % 3) * 0.05);
+      var outerLen = radius * (1.06 + (i % 2) * 0.18);
+      ctx.lineWidth = Math.max(2, (5 - (i % 3)) * scale * fade);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(angle) * inner, cy + Math.sin(angle) * inner);
+      ctx.lineTo(cx + Math.cos(angle) * outerLen, cy + Math.sin(angle) * outerLen);
+      ctx.stroke();
+    }
+
+    /* 外層火團與中心白熱核心 */
+    ctx.fillStyle = outer;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = warm;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * (0.5 - progress * 0.08), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx - radius * 0.1, cy - radius * 0.1, radius * (0.27 - progress * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+
+    /* 幾顆不規則煙霧泡泡，避免效果看起來只是單純圓形 */
+    ctx.fillStyle = gas ? '#C8E6A0' : '#8E8195';
+    ctx.globalAlpha = fade * 0.62;
+    for (var j = 0; j < 7; j++) {
+      var puffAngle = -Math.PI / 2 + j * (Math.PI * 2 / 7);
+      var puffDistance = radius * (0.62 + (j % 2) * 0.2);
+      var puffSize = radius * (0.16 + (j % 3) * 0.035);
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(puffAngle) * puffDistance,
+        cy + Math.sin(puffAngle) * puffDistance, puffSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawEffects() {
     var t = Date.now();
     for (var i = effects.length - 1; i >= 0; i--) {
@@ -553,15 +615,7 @@
       var k = (t - e.at) / e.life;
       if (k >= 1) { effects.splice(i, 1); continue; }
       if (e.type === 'boom') {
-        var r = (e.r * (0.35 + k * 0.9)) * scale;
-        ctx.save();
-        ctx.globalAlpha = 1 - k;
-        ctx.fillStyle = e.tint || '#FFE3A0';
-        ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), r, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#E88CAA';
-        ctx.lineWidth = Math.max(2, 5 * scale * (1 - k));
-        ctx.beginPath(); ctx.arc(sx(e.x), sy(e.y), r * 1.25, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
+        drawExplosion(e, k);
       } else if (e.type === 'text') {
         ctx.save();
         ctx.globalAlpha = 1 - Math.max(0, (k - 0.6) / 0.4);
@@ -640,7 +694,7 @@
       var mod = Rules.modOf(shot.item);
       effects.push({
         type: 'boom', x: sub.impact.x, y: sub.impact.y, r: mod.blastR * 0.62,
-        at: Date.now(), life: 480, tint: shot.item === 'stink' ? '#C8E6A0' : null
+        at: Date.now(), life: reduceMotion ? 220 : 620, tint: shot.item === 'stink' ? '#C8E6A0' : null
       });
       shake = shot.result === 'direct' ? 16 : (shot.result === 'miss' ? 6 : 11);
     }
