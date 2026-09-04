@@ -130,11 +130,12 @@ class CDP {
 /* ------------------------------ 頁面端探針（字串化送進瀏覽器） */
 
 const PAGE_HELPERS = `
-  window.__projectileProbe = { cannonBallSvgDraws: 0 };
+  window.__projectileProbe = { cannonBallSvgDraws: 0, stinkBombSvgDraws: 0, boomEffects: 0, chargeFillTextDraws: 0 };
   (function () {
     var proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
     if (!proto || proto.__catDogProjectileProbe) return;
     var originalDrawImage = proto.drawImage;
+    var originalFillText = proto.fillText;
     proto.drawImage = function (image) {
       var src = image && image.src || '';
       if (src.indexOf('data:image/svg+xml') === 0) {
@@ -145,9 +146,18 @@ const PAGE_HELPERS = `
             svg.indexOf('stroke="#A79AAF"') >= 0) {
             window.__projectileProbe.cannonBallSvgDraws++;
           }
+          if (svg.indexOf('data-asset="stink-bomb"') >= 0) {
+            window.__projectileProbe.stinkBombSvgDraws++;
+          }
         } catch (e) {}
       }
       return originalDrawImage.apply(this, arguments);
+    };
+    proto.fillText = function () {
+      if (document.body.classList.contains('charge-active')) {
+        window.__projectileProbe.chargeFillTextDraws++;
+      }
+      return originalFillText.apply(this, arguments);
     };
     proto.__catDogProjectileProbe = true;
   }());
@@ -387,7 +397,8 @@ async function main() {
     await shot('砲彈-飛行中');
     await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '砲彈飛行完成');
     var projectileProbe = await cdp.json('window.__projectileProbe');
-    check('砲彈飛行期間使用砲彈 SVG', projectileProbe.cannonBallSvgDraws > 0, JSON.stringify(projectileProbe));
+    check('選砲彈時飛行期間使用砲彈 SVG', projectileProbe.cannonBallSvgDraws > 0, JSON.stringify(projectileProbe));
+    check('選砲彈時有爆炸特效', projectileProbe.boomEffects > 0, JSON.stringify(projectileProbe));
     cleanup();
     if (failures.length) process.exit(1);
     console.log('  砲彈專項檢查通過');
@@ -569,12 +580,27 @@ async function main() {
   check('單機：戰場按住移動會同時瞄準與蓄力，游標會變化',
     charging.on && charging.armed && charging.power > 10 && charging.cursor === 'grabbing' && charging.active,
     JSON.stringify(charging));
+  check('單機：蓄力時只顯示蓄力條不畫文字',
+    (await cdp.json('window.__projectileProbe.chargeFillTextDraws')) === 0);
   await shot('單機-蓄力中');
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: Math.round(box.x + box.width * 0.42),
     y: Math.round(box.y + box.height * 0.18), button: 'left', clickCount: 1, pointerType: 'mouse'
   });
+  const specialProjectileBefore = await cdp.json('window.__projectileProbe');
+  await sleep(180);
+  const specialProjectileDuring = await cdp.json('window.__projectileProbe');
+  check('單機：選臭彈時不使用砲彈 SVG',
+    specialProjectileDuring.cannonBallSvgDraws === specialProjectileBefore.cannonBallSvgDraws,
+    JSON.stringify({ before: specialProjectileBefore, during: specialProjectileDuring }));
+  check('單機：選臭彈時使用臭彈 SVG',
+    specialProjectileDuring.stinkBombSvgDraws > specialProjectileBefore.stinkBombSvgDraws,
+    JSON.stringify({ before: specialProjectileBefore, during: specialProjectileDuring }));
   await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '戰場蓄力射擊完成');
+  const specialProjectileAfter = await cdp.json('window.__projectileProbe');
+  check('單機：選臭彈時沒有砲彈爆炸特效',
+    specialProjectileAfter.boomEffects === specialProjectileBefore.boomEffects,
+    JSON.stringify({ before: specialProjectileBefore, after: specialProjectileAfter }));
   check('單機：放開戰場蓄力手勢只發射一發',
     (await cdp.json('window.__probe.game()')).summary === 1);
   await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.busy', 12000, '戰場蓄力射擊後輪到玩家');
@@ -745,8 +771,11 @@ async function main() {
   await goto(P2, BASE);
   await P2.eval('localStorage.clear(); Store.tutorialDone(true); Store.nick("挑戰者"); return 1;');
   await goto(P2, inviteUrl);
+  await P2.waitFor('window.CatDogApp.screen === "s-lobby" && !document.getElementById("b-lobby-invite").hidden', 15000, '邀請者停在暱稱確認');
+  check('線上：邀請連結先停在大廳讓客人確認暱稱', true);
+  await P2.eval('document.getElementById("lobby-nick").value = "邀請挑戰者"; document.getElementById("b-lobby-invite").click(); return 1;');
   await P2.waitFor('window.CatDogApp.online.view && window.CatDogApp.online.view.room.code === "' + code + '"', 15000, '客人進房');
-  check('線上：另一個分頁直接開邀請連結就進到同一間房', true);
+  check('線上：客人確認暱稱後才進到同一間房', true);
   await P2.eval('window.__probe.click("[data-act=pick][data-side=dog]"); return 1;');
   await P2.waitFor('window.CatDogApp.online.view.you.side === "dog"', 6000, '客人選狗');
   check('線上：第二位玩家選了狗狗（不能跟房主重複）', true);

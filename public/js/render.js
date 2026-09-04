@@ -56,9 +56,11 @@
       inner + '</svg>');
   }
 
-  /* 彈藥：實際飛行物一律是砲彈；魚骨頭只保留在貓方道具圖示 */
-  function ammoImage() {
-    return svgImage('ammo:cannonball', UI.cannonBall());
+  /* 未選特殊道具時才飛砲彈；特殊道具各自使用對應投射物。 */
+  function ammoImage(side, item) {
+    if (!item) return svgImage('ammo:cannonball', UI.cannonBall());
+    if (item === 'stink') return svgImage('ammo:stink-bomb', UI.stinkBomb());
+    return svgImage('ammo:' + side + ':special', side === 'dog' ? UI.bone() : UI.fishBone());
   }
 
   /* 場景道具：貓站在開蓋垃圾桶上，狗那一側有房子、狗屋和狗糧 */
@@ -489,34 +491,26 @@
       ctx.restore();
     }
 
-    var img = ammoImage();
-    /* 未解碼完成時先不畫，避免普通圓形 fallback 被誤認成砲彈。 */
+    var img = ammoImage(anim.shot.side, anim.shot.item);
+    /* 未解碼完成時先不畫，避免普通圓形 fallback 被誤認成特殊投射物。 */
     if (img.complete && img.naturalWidth) ctx.drawImage(img, -size / 2, -size / 2, size, size);
     ctx.restore();
   }
 
-  /** 蓄力中的方向與力道，直接標在砲口旁邊；不顯示角度數字避免照抄 */
+  /** 蓄力中只顯示醒目的力道條，放在角色後上方避免蓋住箭頭。 */
   function drawChargeReadout() {
     if (!charge.on || !state || !aim.side) return;
     var f = state.fighters[aim.side];
-    /* 小提示放在角色身後，讓前方的蓄力箭頭保持乾淨。 */
-    var bx = sx(f.x) - f.dir * 36 * scale;
-    var by = sy(f.y + C.MUZZLE_UP + 18);
-    var text = '力 ' + charge.power;
-    var fs = Math.max(9, 14 * scale);
+    var bw = Math.max(64, 112 * scale);
+    var bh = Math.max(12, 16 * scale);
+    var bx = sx(f.x) - f.dir * (bw / 2 + 24 * scale);
+    var by = sy(f.y + 150);
 
     ctx.save();
-    ctx.font = '900 ' + fs + 'px "Yuanti TC","Microsoft JhengHei",system-ui,sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    var pad = Math.max(2, fs * 0.25);
-    var tw = ctx.measureText(text).width;
-
-    /* 白底圓角牌子，天空或土地上都看得清楚 */
+    /* 白底圓角力道條，位置在角色後上方，不會壓住前方的瞄準箭頭。 */
     ctx.fillStyle = 'rgba(255,255,255,0.94)';
     ctx.strokeStyle = '#4A3B55';
     ctx.lineWidth = Math.max(2, 3 * scale);
-    var bw = tw + pad * 2, bh = fs + pad;
     var r = bh / 2;
     ctx.beginPath();
     ctx.moveTo(bx - bw / 2 + r, by - bh / 2);
@@ -528,12 +522,9 @@
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#4A3B55';
-    ctx.fillText(text, bx, by);
-
-    /* 力道長條：滿了就是最大力道 */
-    var gw = bw * 0.78, gh = Math.max(3, 5 * scale);
-    var gx = bx - gw / 2, gy = by + bh / 2 + gh;
+    /* 力道填滿就是最大力道；不另外畫文字，避免干擾瞄準。 */
+    var gw = bw - Math.max(10, 12 * scale), gh = Math.max(6, bh - 6 * scale);
+    var gx = bx - gw / 2, gy = by - gh / 2;
     ctx.fillStyle = '#E9E3EE';
     ctx.beginPath(); ctx.rect(gx, gy, gw, gh); ctx.fill(); ctx.stroke();
     var k = (charge.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
@@ -685,15 +676,15 @@
     animGuard = 0;
     lastTrail = sub.points && sub.points.length ? sub.points : lastTrail;
 
-    if (sub.impact) {
-      /* 爆炸圈畫的就是這一發真正的傷害半徑：臭彈看起來大一圈，
-       * 因為它本來就打得比較廣，不是特效唬人。 */
+    if (sub.impact && !shot.item) {
+      /* 只有選砲彈時才播放爆炸圈；特殊道具保留自己的投射物外觀。 */
       var mod = Rules.modOf(shot.item);
       effects.push({
         type: 'boom', x: sub.impact.x, y: sub.impact.y, r: mod.blastR * 0.62,
         at: Date.now(), life: reduceMotion ? 220 : 620, tint: shot.item === 'stink' ? '#C8E6A0' : null
       });
       shake = shot.result === 'direct' ? 16 : (shot.result === 'miss' ? 6 : 11);
+      if (w.__projectileProbe) w.__projectileProbe.boomEffects++;
     }
 
     /* 傷害數字浮在被打到的那一隻頭上，而不是只在角落偷偷改數字 */
@@ -785,8 +776,8 @@
     stage = stageEl;
     canvasWrap = canvas.parentElement;
     ctx = canvas.getContext('2d');
-    /* 提前解碼砲彈 SVG，讓第一次出手也能直接顯示完整圖案。 */
-    ammoImage();
+    /* 提前解碼砲彈 SVG，讓第一次選砲彈時也能直接顯示完整圖案。 */
+    ammoImage(null, null);
     if (w.ResizeObserver) new ResizeObserver(function () { resize(); }).observe(stage);
     /* ResizeObserver 的通知綁在「更新畫面」那一步，分頁在背景時不會送達，
      * 所以另外補上 resize / orientationchange / 回到前景 三個入口，

@@ -20,9 +20,11 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
-  /* 貓咪的放大道具用魚骨頭 SVG；發射出去的飛行物仍由 Board 畫成砲彈。 */
+  /* 貓咪的大骨頭用魚骨頭 SVG；砲彈按鈕代表不搭配特殊道具。 */
   function itemIcon(side, key) {
+    if (!key) return UI.cannonBall();
     if (side === 'cat' && key === 'bigbone') return UI.fishBone();
+    if (key === 'stink') return UI.stinkBomb();
     return esc(Rules.ITEMS[key].icon);
   }
 
@@ -448,9 +450,9 @@
       if (own) {
         controls.push('<button class="stage-item-btn' + (!app.item ? ' selected' : '') + (locked ? ' locked' : '') + '"' +
           ' type="button" role="radio" data-stage-side="' + side + '" data-stage-item=""' +
-          ' aria-label="' + esc(Rules.SIDE_LABEL[side]) + '這一發不用道具"' +
+          ' aria-label="' + esc(Rules.SIDE_LABEL[side]) + '這一發選砲彈"' +
           ' aria-checked="' + (!app.item ? 'true' : 'false') + '"' + (can && !locked ? '' : ' disabled') + '>' +
-          '<span class="ico">🎯</span><span class="num">—</span></button>');
+          '<span class="ico">' + itemIcon(side, null) + '</span><span class="num">—</span></button>');
       }
 
       Rules.ITEM_ORDER.forEach(function (key) {
@@ -808,9 +810,9 @@
     /* 窄版與橫向只留得下圖示，文字用 .txt 包起來由 CSS 收掉；
      * aria-label 一律寫完整名稱，螢幕閱讀器不會只聽到一個表情符號。 */
     var html = '<button class="itemchip" type="button" role="radio" data-item=""' +
-      ' aria-label="不用道具" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
+      ' aria-label="砲彈" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
       (can && !locked ? '' : ' disabled') +
-      '><span class="ico">🎯</span><span class="txt">不用道具</span></button>';
+      '><span class="ico">' + itemIcon(ctx.mySide, null) + '</span><span class="txt">砲彈</span></button>';
 
     Rules.ITEM_ORDER.forEach(function (key) {
       var it = Rules.ITEMS[key];
@@ -950,6 +952,18 @@
 
   function setChargeCursor(on) {
     document.body.classList.toggle('charge-active', !!on);
+    var stageHint = $('stage-gesture-hint');
+    var ctrlHint = $('ctrl-hint');
+    if (ctrlHint) ctrlHint.hidden = !!on;
+    if (!stageHint) return;
+    if (on) {
+      /* 蓄力期間戰場只留畫布上的蓄力條，不再顯示文字膠囊。 */
+      stageHint.hidden = true;
+      stageHint.textContent = '';
+      return;
+    }
+    var ctx = currentCtx();
+    stageHint.hidden = !(ctx && ctx.game && !ctx.game.over && ctx.canFire);
   }
 
   function runCharge() {
@@ -999,20 +1013,15 @@
     if (source === 'button') setFireButtonCharging(true);
     setChargeCursor(true);
     showCharge(0);
-    hint(source === 'board'
-      ? '瞄準中…移動調整角度；繼續按住蓄力，放開就發射。'
-      : '按住發射鈕蓄力…放開發射；也可以在戰場手勢中同時瞄準。');
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
     c.armTimer = w.setTimeout(function () {
       if (c.on) runCharge();
     }, CHARGE_ARM_MS);
   }
 
-  /** 蓄力中的即時讀數：力道條與力道數字；方向只用箭頭呈現 */
+  /** 蓄力中的即時讀數：只更新畫布上的蓄力條，不顯示文字。 */
   function showCharge(t) {
-    var c = app.charge;
     $('chargefill').style.width = Math.round(t * 100) + '%';
-    hint((c.armed ? '蓄力' : '瞄準') + ' 力道 ' + app.aim.power);
     Board.setCharge({ on: true, angle: app.aim.angle, power: app.aim.power });
   }
 
@@ -1304,6 +1313,10 @@
           toast((res && res.error) || '加入失敗。', 'error');
           return;
         }
+        if (app.online.pendingInvite && app.online.pendingInvite.code === code) {
+          app.online.pendingInvite = null;
+          $('lobby-invite').hidden = true;
+        }
         resetOnlinePlayback();
         app.mode = 'online';
         app.online.code = res.code;
@@ -1314,6 +1327,19 @@
         show('s-battle');
       });
     }).catch(function (err) { toast(err.message || '連不到伺服器。', 'error'); });
+  }
+
+  function joinPendingInvite() {
+    var invite = app.online.pendingInvite;
+    if (!invite) return;
+    var name = ($('lobby-nick').value || '').trim();
+    if (!name) {
+      toast('請先輸入暱稱，再加入邀請房間。', 'error');
+      $('lobby-nick').focus();
+      return;
+    }
+    Store.nick(name);
+    joinRoom(invite.code, invite.role, invite.token);
   }
 
   function createRoom() {
@@ -1485,17 +1511,35 @@
       return false;
     }
     show('s-lobby');
-    $('lobby-state').textContent = '正在確認邀請連結…';
+    $('lobby-code').value = e.room;
+    app.online.pendingInvite = { code: e.room, token: e.invite || '', role: 'player' };
+    $('lobby-invite').hidden = false;
+    $('lobby-invite-note').textContent = e.invite
+      ? '正在確認邀請連結；確認後請設定暱稱，再加入這場貓狗大戰。'
+      : '請先設定你的暱稱，再加入這場貓狗大戰。';
+    $('b-lobby-invite').disabled = !!e.invite;
+    $('lobby-state').textContent = e.invite ? '正在確認邀請連結…' : '邀請連結已準備好，確認暱稱後就能加入。';
     ensureOnline().then(function () {
+      if (!e.invite) {
+        $('b-lobby-invite').disabled = false;
+        return;
+      }
       Online.send('invite:check', { code: e.room, token: e.invite }, function (res) {
         if (!res || !res.ok) {
+          app.online.pendingInvite = null;
+          $('lobby-invite').hidden = true;
           toast((res && res.error) || '邀請連結無效。', 'error');
           $('lobby-state').textContent = (res && res.error) || '邀請連結無效，可以改用房號加入。';
           Online.send('lobby:subscribe');
           return;
         }
+        app.online.pendingInvite.role = res.role === 'spectator' ? 'spectator' : 'player';
+        $('lobby-invite-note').textContent = app.online.pendingInvite.role === 'spectator'
+          ? '這是觀戰邀請，請先設定暱稱，再加入房間。'
+          : '這是玩家邀請，請先設定暱稱，再加入房間。';
+        $('b-lobby-invite').disabled = false;
+        $('lobby-state').textContent = '邀請連結有效，確認暱稱後就能加入。';
         if (res.note) toast(res.note);
-        joinRoom(e.room, res.role === 'spectator' ? 'spectator' : 'player', e.invite);
       });
     }).catch(function (err) {
       toast(err.message || '連不到伺服器。', 'error');
@@ -1697,7 +1741,15 @@
     $('b-lobby-join').addEventListener('click', function () {
       var code = ($('lobby-code').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code.length < 4) { toast('房號要 4 個英數字。', 'error'); return; }
+      if (app.online.pendingInvite && app.online.pendingInvite.code === code) {
+        joinPendingInvite();
+        return;
+      }
       joinRoom(code, 'player');
+    });
+    $('b-lobby-invite').addEventListener('click', function () {
+      Sound.play('click');
+      joinPendingInvite();
     });
     $('b-lobby-refresh').addEventListener('click', function () {
       Sound.play('click');
