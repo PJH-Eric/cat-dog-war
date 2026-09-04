@@ -276,6 +276,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background
   touch-action:none;cursor:crosshair;-webkit-touch-callout:none;
 }
 body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
+body.charge-active .stage-gesture-hint{max-width:min(42vw,220px);padding:3px 8px;font-size:.68rem;line-height:1.1}
 
 /* 平板操作提示固定在畫布上方中央，不會攔截手勢；輪到玩家時顯示目前可做的動作。 */
 .stage-gesture-hint{

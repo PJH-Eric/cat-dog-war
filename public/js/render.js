@@ -402,7 +402,7 @@
 
   /** 瞄準線：從砲口沿著發射方向畫一段虛線，末端箭頭大小代表力道 */
   function drawAim() {
-    if (!aim.visible || !aim.side || !state || state.over) return;
+    if (!aim.visible || !aim.side || !state || state.over || anim) return;
     var f = state.fighters[aim.side];
     var rad = aim.angle * Math.PI / 180;
     var len = (40 + (aim.power / C.MAX_POWER) * 190);
@@ -472,7 +472,7 @@
 
     var mod = Rules.modOf(anim.shot.item);
     /* 大骨頭的判定半徑真的比較大，畫面上就要真的比較大顆 */
-    var size = 42 * mod.scale * scale;
+    var size = 48 * mod.scale * scale;
     var spin = reduceMotion ? 0 : anim.i * 0.22;
     ctx.save();
     ctx.translate(sx(p.x), sy(p.y));
@@ -490,12 +490,8 @@
     }
 
     var img = ammoImage();
+    /* 未解碼完成時先不畫，避免普通圓形 fallback 被誤認成砲彈。 */
     if (img.complete && img.naturalWidth) ctx.drawImage(img, -size / 2, -size / 2, size, size);
-    else {
-      ctx.fillStyle = '#40364F';
-      ctx.strokeStyle = '#4A3B55'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
     ctx.restore();
   }
 
@@ -503,16 +499,17 @@
   function drawChargeReadout() {
     if (!charge.on || !state || !aim.side) return;
     var f = state.fighters[aim.side];
-    var bx = sx(f.x) + f.dir * 54 * scale;
-    var by = sy(f.y + C.MUZZLE_UP + 66);
-    var text = '蓄力中  力道 ' + charge.power;
-    var fs = Math.max(13, 26 * scale);
+    /* 小提示放在角色身後，讓前方的蓄力箭頭保持乾淨。 */
+    var bx = sx(f.x) - f.dir * 36 * scale;
+    var by = sy(f.y + C.MUZZLE_UP + 18);
+    var text = '力 ' + charge.power;
+    var fs = Math.max(9, 14 * scale);
 
     ctx.save();
     ctx.font = '900 ' + fs + 'px "Yuanti TC","Microsoft JhengHei",system-ui,sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var pad = fs * 0.55;
+    var pad = Math.max(2, fs * 0.25);
     var tw = ctx.measureText(text).width;
 
     /* 白底圓角牌子，天空或土地上都看得清楚 */
@@ -535,7 +532,7 @@
     ctx.fillText(text, bx, by);
 
     /* 力道長條：滿了就是最大力道 */
-    var gw = bw * 0.86, gh = Math.max(4, 7 * scale);
+    var gw = bw * 0.78, gh = Math.max(3, 5 * scale);
     var gx = bx - gw / 2, gy = by + bh / 2 + gh;
     ctx.fillStyle = '#E9E3EE';
     ctx.beginPath(); ctx.rect(gx, gy, gw, gh); ctx.fill(); ctx.stroke();
@@ -788,6 +785,8 @@
     stage = stageEl;
     canvasWrap = canvas.parentElement;
     ctx = canvas.getContext('2d');
+    /* 提前解碼砲彈 SVG，讓第一次出手也能直接顯示完整圖案。 */
+    ammoImage();
     if (w.ResizeObserver) new ResizeObserver(function () { resize(); }).observe(stage);
     /* ResizeObserver 的通知綁在「更新畫面」那一步，分頁在背景時不會送達，
      * 所以另外補上 resize / orientationchange / 回到前景 三個入口，

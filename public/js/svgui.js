@@ -376,11 +376,18 @@
 
   /** 圓潤的砲彈：實際飛行時使用，不再用骨頭或 emoji 代替 */
   function cannonBall() {
-    return '<svg viewBox="0 0 100 100" role="img" aria-label="砲彈">' +
-      '<circle cx="50" cy="50" r="35" fill="#40364F" stroke="' + INK + '" stroke-width="6"/>' +
-      '<circle cx="38" cy="34" r="11" fill="#B8ADBF" opacity="0.72"/>' +
-      '<path d="M26 66 Q50 83 75 66" fill="none" stroke="#695B73" stroke-width="6" stroke-linecap="round" opacity="0.9"/>' +
-      '<circle cx="70" cy="37" r="4" fill="#82758B"/>' +
+    return '<svg viewBox="0 0 100 100" data-asset="cannonball" role="img" aria-label="砲彈">' +
+      '<g transform="rotate(-18 50 50)">' +
+      /* 彈體：圓潤的砲彈輪廓，右側用弧面表現金屬厚度 */
+      '<path d="M16 50 Q21 29 41 22 Q57 17 71 23 Q87 29 95 50 Q87 71 71 77 Q57 83 41 78 Q21 71 16 50 Z" fill="#40364F" stroke="' + INK + '" stroke-width="6" stroke-linejoin="round"/>' +
+      '<path d="M68 23 Q86 30 95 50 Q86 70 68 77 Q76 50 68 23 Z" fill="#75677D" opacity="0.86"/>' +
+      /* 彈頭金屬環與鉚釘 */
+      '<path d="M64 24 Q72 50 64 76" fill="none" stroke="#A79AAF" stroke-width="6" opacity="0.72"/>' +
+      '<circle cx="43" cy="34" r="4" fill="#CFC5D4" stroke="#4A3B55" stroke-width="2"/>' +
+      '<circle cx="43" cy="66" r="4" fill="#CFC5D4" stroke="#4A3B55" stroke-width="2"/>' +
+      '<path d="M29 38 Q43 25 57 29" fill="none" stroke="#E8E0EA" stroke-width="6" stroke-linecap="round" opacity="0.72"/>' +
+      '<path d="M29 62 Q43 75 57 71" fill="none" stroke="#251E32" stroke-width="5" stroke-linecap="round" opacity="0.55"/>' +
+      '</g>' +
       '</svg>';
   }
 

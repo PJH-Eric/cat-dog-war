@@ -1012,8 +1012,7 @@
   function showCharge(t) {
     var c = app.charge;
     $('chargefill').style.width = Math.round(t * 100) + '%';
-    hint((c.armed ? '蓄力中…' : '瞄準中…繼續按住蓄力')
-      + ' 力道 ' + app.aim.power + '（方向看箭頭，放開就發射）');
+    hint((c.armed ? '蓄力' : '瞄準') + ' 力道 ' + app.aim.power);
     Board.setCharge({ on: true, angle: app.aim.angle, power: app.aim.power });
   }
 

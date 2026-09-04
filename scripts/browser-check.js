@@ -130,6 +130,28 @@ class CDP {
 /* ------------------------------ 頁面端探針（字串化送進瀏覽器） */
 
 const PAGE_HELPERS = `
+  window.__projectileProbe = { cannonBallSvgDraws: 0 };
+  (function () {
+    var proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
+    if (!proto || proto.__catDogProjectileProbe) return;
+    var originalDrawImage = proto.drawImage;
+    proto.drawImage = function (image) {
+      var src = image && image.src || '';
+      if (src.indexOf('data:image/svg+xml') === 0) {
+        try {
+          var svg = decodeURIComponent(src.slice(src.indexOf(',') + 1));
+          if (svg.indexOf('data-asset="cannonball"') >= 0 &&
+            svg.indexOf('M16 50 Q21 29 41 22') >= 0 &&
+            svg.indexOf('stroke="#A79AAF"') >= 0) {
+            window.__projectileProbe.cannonBallSvgDraws++;
+          }
+        } catch (e) {}
+      }
+      return originalDrawImage.apply(this, arguments);
+    };
+    proto.__catDogProjectileProbe = true;
+  }());
+
   window.__probe = {
     layout: function () {
       var doc = document.documentElement;
@@ -350,6 +372,28 @@ async function main() {
     });
     await sleep(320);
   }
+
+  if (process.env.CHECK_PROJECTILE_ONLY) {
+    await setViewport({ width: 1024, height: 768, mobile: true, dsf: 2 });
+    await goto(cdp, BASE);
+    await cdp.eval('localStorage.clear(); return 1;');
+    await goto(cdp, BASE);
+    await cdp.eval('window.__probe.click("#b-tut-skip"); window.__probe.click("#b-solo"); return 1;');
+    await sleep(200);
+    await cdp.eval('document.querySelector("#opt-side .sidecard[data-v=cat]").click(); document.querySelector("#opt-diff .optcard[data-v=easy]").click(); document.getElementById("seed-input").value = "PROJECTILE"; window.__probe.click("#b-solo-start"); return 1;');
+    await cdp.waitFor('window.CatDogApp.solo.state && window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.solo.thinking', 12000, '輪到玩家');
+    await cdp.eval('document.getElementById("b-fire").click(); return 1;');
+    await sleep(160);
+    await shot('砲彈-飛行中');
+    await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '砲彈飛行完成');
+    var projectileProbe = await cdp.json('window.__projectileProbe');
+    check('砲彈飛行期間使用砲彈 SVG', projectileProbe.cannonBallSvgDraws > 0, JSON.stringify(projectileProbe));
+    cleanup();
+    if (failures.length) process.exit(1);
+    console.log('  砲彈專項檢查通過');
+    process.exit(0);
+  }
+
   function assertLayout(where, v, info) {
     check(where + '：沒有水平溢出',
       info.scrollWidth <= v.width + 2 && info.overflowing.length === 0,
@@ -525,6 +569,7 @@ async function main() {
   check('單機：戰場按住移動會同時瞄準與蓄力，游標會變化',
     charging.on && charging.armed && charging.power > 10 && charging.cursor === 'grabbing' && charging.active,
     JSON.stringify(charging));
+  await shot('單機-蓄力中');
   await cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased', x: Math.round(box.x + box.width * 0.42),
     y: Math.round(box.y + box.height * 0.18), button: 'left', clickCount: 1, pointerType: 'mouse'
