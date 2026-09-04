@@ -181,7 +181,7 @@
     return '<svg viewBox="0 0 100 100" role="img" aria-label="' + (label || (side === 'dog' ? '狗狗' : '貓咪')) + '">' + face + '</svg>';
   }
 
-  /* ---- 彈藥圖示：毛線球與骨頭 ---- */
+  /* ---- 彈藥圖示：魚骨頭、狗骨頭與舊版保留圖示 ---- */
   function yarn() {
     return '<svg viewBox="0 0 100 100" role="img" aria-label="毛線球">' +
       '<circle cx="50" cy="52" r="34" fill="#FFB8CF" stroke="' + INK + '" stroke-width="6"/>' +
@@ -190,7 +190,7 @@
       '</svg>';
   }
   function bone() {
-    return '<svg viewBox="0 0 100 100" role="img" aria-label="骨頭">' +
+    return '<svg viewBox="0 0 100 100" data-asset="bone" role="img" aria-label="骨頭">' +
       '<g transform="rotate(-25 50 50)">' +
       '<rect x="26" y="42" width="48" height="16" rx="8" fill="#FFF7E8" stroke="' + INK + '" stroke-width="6"/>' +
       '<circle cx="26" cy="42" r="12" fill="#FFF7E8" stroke="' + INK + '" stroke-width="6"/>' +
@@ -391,18 +391,6 @@
       '</svg>';
   }
 
-  /** 臭彈：只顯示臭氣炸彈本體，不共用砲彈外觀。 */
-  function stinkBomb() {
-    return '<svg viewBox="0 0 100 100" data-asset="stink-bomb" role="img" aria-label="臭彈">' +
-      '<path d="M58 22 Q68 10 80 15" fill="none" stroke="#695B73" stroke-width="6" stroke-linecap="round"/>' +
-      '<path d="M77 15 l8 -5" fill="none" stroke="#E7C263" stroke-width="5" stroke-linecap="round"/>' +
-      '<circle cx="49" cy="56" r="31" fill="#9AD16F" stroke="' + INK + '" stroke-width="6"/>' +
-      '<path d="M29 52 q10 -12 20 0 q10 12 20 0" fill="none" stroke="#E8F6C9" stroke-width="6" stroke-linecap="round"/>' +
-      '<path d="M35 72 q14 9 28 0" fill="none" stroke="#6E9C4A" stroke-width="5" stroke-linecap="round"/>' +
-      '<circle cx="40" cy="43" r="4" fill="#E8F6C9"/>' +
-      '</svg>';
-  }
-
   /* ======================= 場景：垃圾桶、狗屋、狗糧 ======================= */
 
   /** 開著蓋子的垃圾桶，貓咪站在上面 */
@@ -480,7 +468,7 @@
     setLabel: setLabel, setColor: setColor,
     catFace: catFace, dogFace: dogFace, avatar: avatar,
     catBody: catBody, dogBody: dogBody,
-    yarn: yarn, bone: bone, fishBone: fishBone, cannonBall: cannonBall, stinkBomb: stinkBomb,
+    yarn: yarn, bone: bone, fishBone: fishBone, cannonBall: cannonBall,
     trashCan: trashCan, dogHouse: dogHouse, dogBowl: dogBowl, house: house,
     logo: logo, trophy: trophy, windArrow: windArrow, bgDeco: bgDeco
   };

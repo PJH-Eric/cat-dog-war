@@ -105,8 +105,8 @@
       hitR: 1.4, damage: 1.5
     },
     stink: {
-      key: 'stink', label: '臭彈', icon: '💣', kind: 'shot',
-      note: '換成一顆臭氣炸彈，爆炸範圍大很多，沒正中也很痛。',
+      key: 'stink', label: '砲彈', icon: '⚫', kind: 'shot',
+      note: '換成真正的砲彈，飛行時使用砲彈 SVG，落地播放爆炸特效。',
       blast: 1.55, core: 1.6, damage: 1.6
     },
     heal: {

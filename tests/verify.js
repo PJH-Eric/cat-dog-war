@@ -624,7 +624,7 @@ test('大骨頭的命中判定與傷害都比較大', () => {
   assert.strictEqual(big.blastR, plain.blastR, '大骨頭不該改爆炸範圍');
 });
 
-test('臭彈的爆炸範圍與傷害都比較大，但判定半徑不變', () => {
+test('砲彈的爆炸範圍與傷害都比較大，但判定半徑不變', () => {
   const plain = Rules.modOf(null);
   const stink = Rules.modOf('stink');
   assert.ok(stink.blastR > plain.blastR, '爆炸範圍要更大');
@@ -671,7 +671,7 @@ test('道具會出現在操作摘要的文字裡', () => {
   const st = Rules.createState({ seed: 'ITEM9', first: 'cat' });
   const r = Rules.applyShot(st, 'cat', { angle: 45, power: 60, item: 'stink' });
   const text = Rules.describeShot(r.shot);
-  assert.ok(text.includes('臭彈'), '摘要要寫出用了哪個道具：' + text);
+  assert.ok(text.includes('砲彈'), '摘要要寫出用了哪個道具：' + text);
   const h = Rules.applyHeal(st, 'cat');
   assert.ok(Rules.describeShot(h.shot).includes('補血'));
 });

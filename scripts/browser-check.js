@@ -130,7 +130,7 @@ class CDP {
 /* ------------------------------ 頁面端探針（字串化送進瀏覽器） */
 
 const PAGE_HELPERS = `
-  window.__projectileProbe = { cannonBallSvgDraws: 0, stinkBombSvgDraws: 0, boomEffects: 0, chargeFillTextDraws: 0 };
+  window.__projectileProbe = { cannonBallSvgDraws: 0, fishBoneSvgDraws: 0, boneSvgDraws: 0, boomEffects: 0, chargeFillTextDraws: 0 };
   (function () {
     var proto = window.CanvasRenderingContext2D && window.CanvasRenderingContext2D.prototype;
     if (!proto || proto.__catDogProjectileProbe) return;
@@ -146,9 +146,8 @@ const PAGE_HELPERS = `
             svg.indexOf('stroke="#A79AAF"') >= 0) {
             window.__projectileProbe.cannonBallSvgDraws++;
           }
-          if (svg.indexOf('data-asset="stink-bomb"') >= 0) {
-            window.__projectileProbe.stinkBombSvgDraws++;
-          }
+          if (svg.indexOf('data-asset="fishbone"') >= 0) window.__projectileProbe.fishBoneSvgDraws++;
+          if (svg.indexOf('data-asset="bone"') >= 0) window.__projectileProbe.boneSvgDraws++;
         } catch (e) {}
       }
       return originalDrawImage.apply(this, arguments);
@@ -392,10 +391,14 @@ async function main() {
     await sleep(200);
     await cdp.eval('document.querySelector("#opt-side .sidecard[data-v=cat]").click(); document.querySelector("#opt-diff .optcard[data-v=easy]").click(); document.getElementById("seed-input").value = "PROJECTILE"; window.__probe.click("#b-solo-start"); return 1;');
     await cdp.waitFor('window.CatDogApp.solo.state && window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.solo.thinking', 12000, '輪到玩家');
+    check('預設貓咪使用魚骨頭', await cdp.eval('return !!document.querySelector("[data-stage-side=cat][data-stage-item=\\\"\\\"] svg[data-asset=fishbone]")'));
+    await cdp.eval('window.__probe.click("[data-stage-side=cat][data-stage-item=stink]"); return 1;');
+    await cdp.waitFor('window.CatDogApp.item === "stink"', 2000, '選定砲彈');
+    const projectileSummaryBefore = await cdp.json('window.CatDogApp.solo.summary.length');
     await cdp.eval('document.getElementById("b-fire").click(); return 1;');
     await sleep(160);
     await shot('砲彈-飛行中');
-    await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '砲彈飛行完成');
+    await cdp.waitFor('window.CatDogApp.solo.summary.length > ' + projectileSummaryBefore, 6000, '砲彈飛行完成');
     var projectileProbe = await cdp.json('window.__projectileProbe');
     check('選砲彈時飛行期間使用砲彈 SVG', projectileProbe.cannonBallSvgDraws > 0, JSON.stringify(projectileProbe));
     check('選砲彈時有爆炸特效', projectileProbe.boomEffects > 0, JSON.stringify(projectileProbe));
@@ -533,7 +536,7 @@ async function main() {
   /* 鍵盤調角度與力道 */
   await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.solo.thinking', 12000, '輪到玩家');
   await cdp.eval('window.__probe.click("[data-stage-side=cat][data-stage-item=stink]"); return 1;');
-  await cdp.waitFor('window.CatDogApp.item === "stink"', 2000, '選定臭彈');
+  await cdp.waitFor('window.CatDogApp.item === "stink"', 2000, '選定砲彈');
   check('單機：選定道具後會鎖定本回合選擇',
     await cdp.eval('return window.CatDogApp.item === "stink" && document.querySelector("[data-stage-item=double]").disabled;'));
   await cdp.eval('window.__probe.click("[data-stage-side=cat][data-stage-item=double]"); return 1;');
@@ -590,16 +593,13 @@ async function main() {
   const specialProjectileBefore = await cdp.json('window.__projectileProbe');
   await sleep(180);
   const specialProjectileDuring = await cdp.json('window.__projectileProbe');
-  check('單機：選臭彈時不使用砲彈 SVG',
-    specialProjectileDuring.cannonBallSvgDraws === specialProjectileBefore.cannonBallSvgDraws,
-    JSON.stringify({ before: specialProjectileBefore, during: specialProjectileDuring }));
-  check('單機：選臭彈時使用臭彈 SVG',
-    specialProjectileDuring.stinkBombSvgDraws > specialProjectileBefore.stinkBombSvgDraws,
+  check('單機：選砲彈時使用砲彈 SVG',
+    specialProjectileDuring.cannonBallSvgDraws > specialProjectileBefore.cannonBallSvgDraws,
     JSON.stringify({ before: specialProjectileBefore, during: specialProjectileDuring }));
   await cdp.waitFor('window.CatDogApp.solo.summary.length === 1', 6000, '戰場蓄力射擊完成');
   const specialProjectileAfter = await cdp.json('window.__projectileProbe');
-  check('單機：選臭彈時沒有砲彈爆炸特效',
-    specialProjectileAfter.boomEffects === specialProjectileBefore.boomEffects,
+  check('單機：選砲彈時有爆炸特效',
+    specialProjectileAfter.boomEffects > specialProjectileBefore.boomEffects,
     JSON.stringify({ before: specialProjectileBefore, after: specialProjectileAfter }));
   check('單機：放開戰場蓄力手勢只發射一發',
     (await cdp.json('window.__probe.game()')).summary === 1);

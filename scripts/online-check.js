@@ -298,10 +298,10 @@ async function main() {
         !!watcher.lastError() && /觀戰/.test(watcher.lastError().message),
         watcher.lastError() && watcher.lastError().message);
 
-      /* 先選臭彈：伺服器要鎖住本回合選擇，三方都看得到 */
+      /* 先選砲彈：伺服器要鎖住本回合選擇，三方都看得到 */
       const picked = await turnCli.ask('room:selectItem', { item: 'stink' });
-      check('玩家可以先選定臭彈', picked && picked.ok, JSON.stringify(picked));
-      await turnCli.until((v) => v.you.selectedItem === 'stink', '臭彈選擇同步');
+      check('玩家可以先選定砲彈', picked && picked.ok, JSON.stringify(picked));
+      await turnCli.until((v) => v.you.selectedItem === 'stink', '砲彈選擇同步');
       turnCli.errors.length = 0;
       turnCli.send('room:selectItem', { item: 'double' });
       await sleep(220);
@@ -309,11 +309,11 @@ async function main() {
         !!turnCli.lastError() && turnCli.lastError().code === 'item_locked',
         JSON.stringify(turnCli.lastError()));
 
-      /* 帶臭彈射一發：伺服器要扣掉道具，三方都看得到 */
+      /* 帶砲彈射一發：伺服器要扣掉道具，三方都看得到 */
       let v0 = host.view.game.version;
       turnCli.send('room:fire', { angle: 50, power: 70, item: 'stink' });
-      await host.until((v) => v.game.version > v0, '帶臭彈的一發生效', 10000);
-      check('用掉的臭彈在伺服器狀態裡被扣掉',
+      await host.until((v) => v.game.version > v0, '帶砲彈的一發生效', 10000);
+      check('用掉的砲彈在伺服器狀態裡被扣掉',
         host.view.game.items[turnSide].stink === 0,
         JSON.stringify(host.view.game.items[turnSide]));
       check('三方看到的背包一致',
@@ -322,7 +322,7 @@ async function main() {
       check('摘要記錄了這一發用的道具',
         host.view.room.summary[host.view.room.summary.length - 1].item === 'stink');
 
-      /* 已經用完的臭彈不能再用 */
+      /* 已經用完的砲彈不能再用 */
       const nextSide = host.view.game.turn;
       const nextCli = nextSide === turnSide ? turnCli : (nextSide === 'cat' ? host : guest);
       if (nextSide !== turnSide) {
@@ -334,7 +334,7 @@ async function main() {
       turnCli.errors.length = 0;
       turnCli.send('room:fire', { angle: 50, power: 70, item: 'stink' });
       await sleep(260);
-      check('用完的臭彈伺服器會擋下',
+      check('用完的砲彈伺服器會擋下',
         !!turnCli.lastError() && /用完/.test(turnCli.lastError().message),
         turnCli.lastError() && turnCli.lastError().message);
 

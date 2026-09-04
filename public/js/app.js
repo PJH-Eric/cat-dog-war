@@ -20,11 +20,13 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   };
 
-  /* 貓咪的大骨頭用魚骨頭 SVG；砲彈按鈕代表不搭配特殊道具。 */
+  function defaultAmmoLabel(side) { return side === 'dog' ? '狗骨頭' : '魚骨頭'; }
+
+  /* 預設彈藥保留角色原本外觀；只有選到砲彈道具才換成砲彈 SVG。 */
   function itemIcon(side, key) {
-    if (!key) return UI.cannonBall();
+    if (!key) return side === 'dog' ? UI.bone() : UI.fishBone();
+    if (key === 'stink') return UI.cannonBall();
     if (side === 'cat' && key === 'bigbone') return UI.fishBone();
-    if (key === 'stink') return UI.stinkBomb();
     return esc(Rules.ITEMS[key].icon);
   }
 
@@ -450,7 +452,7 @@
       if (own) {
         controls.push('<button class="stage-item-btn' + (!app.item ? ' selected' : '') + (locked ? ' locked' : '') + '"' +
           ' type="button" role="radio" data-stage-side="' + side + '" data-stage-item=""' +
-          ' aria-label="' + esc(Rules.SIDE_LABEL[side]) + '這一發選砲彈"' +
+          ' aria-label="' + esc(Rules.SIDE_LABEL[side]) + '這一發用' + esc(defaultAmmoLabel(side)) + '"' +
           ' aria-checked="' + (!app.item ? 'true' : 'false') + '"' + (can && !locked ? '' : ' disabled') + '>' +
           '<span class="ico">' + itemIcon(side, null) + '</span><span class="num">—</span></button>');
       }
@@ -810,9 +812,9 @@
     /* 窄版與橫向只留得下圖示，文字用 .txt 包起來由 CSS 收掉；
      * aria-label 一律寫完整名稱，螢幕閱讀器不會只聽到一個表情符號。 */
     var html = '<button class="itemchip" type="button" role="radio" data-item=""' +
-      ' aria-label="砲彈" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
+      ' aria-label="' + esc(defaultAmmoLabel(ctx.mySide)) + '" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
       (can && !locked ? '' : ' disabled') +
-      '><span class="ico">' + itemIcon(ctx.mySide, null) + '</span><span class="txt">砲彈</span></button>';
+      '><span class="ico">' + itemIcon(ctx.mySide, null) + '</span><span class="txt">' + esc(defaultAmmoLabel(ctx.mySide)) + '</span></button>';
 
     Rules.ITEM_ORDER.forEach(function (key) {
       var it = Rules.ITEMS[key];

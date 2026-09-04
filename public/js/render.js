@@ -56,11 +56,10 @@
       inner + '</svg>');
   }
 
-  /* 未選特殊道具時才飛砲彈；特殊道具各自使用對應投射物。 */
+  /* 未選道具與既有特殊道具維持角色原本彈藥；只有砲彈道具才飛砲彈。 */
   function ammoImage(side, item) {
-    if (!item) return svgImage('ammo:cannonball', UI.cannonBall());
-    if (item === 'stink') return svgImage('ammo:stink-bomb', UI.stinkBomb());
-    return svgImage('ammo:' + side + ':special', side === 'dog' ? UI.bone() : UI.fishBone());
+    if (item === 'stink') return svgImage('ammo:cannonball', UI.cannonBall());
+    return svgImage('ammo:' + side + ':default', side === 'dog' ? UI.bone() : UI.fishBone());
   }
 
   /* 場景道具：貓站在開蓋垃圾桶上，狗那一側有房子、狗屋和狗糧 */
@@ -474,22 +473,11 @@
 
     var mod = Rules.modOf(anim.shot.item);
     /* 大骨頭的判定半徑真的比較大，畫面上就要真的比較大顆 */
-    var size = 48 * mod.scale * scale;
+    var size = (anim.shot.item === 'stink' ? 48 : 38) * mod.scale * scale;
     var spin = reduceMotion ? 0 : anim.i * 0.22;
     ctx.save();
     ctx.translate(sx(p.x), sy(p.y));
     ctx.rotate(spin);
-
-    /* 臭彈：在彈藥外面再加一圈綠色臭氣，跟一般的一眼分得出來 */
-    if (anim.shot.item === 'stink') {
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-      ctx.fillStyle = '#9AD16F';
-      ctx.beginPath();
-      ctx.arc(0, 0, size * 0.72, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
 
     var img = ammoImage(anim.shot.side, anim.shot.item);
     /* 未解碼完成時先不畫，避免普通圓形 fallback 被誤認成特殊投射物。 */
@@ -503,8 +491,8 @@
     var f = state.fighters[aim.side];
     var bw = Math.max(64, 112 * scale);
     var bh = Math.max(12, 16 * scale);
-    var bx = sx(f.x) - f.dir * (bw / 2 + 24 * scale);
-    var by = sy(f.y + 150);
+    var bx = sx(f.x);
+    var by = sy(f.y + 180);
 
     ctx.save();
     /* 白底圓角力道條，位置在角色後上方，不會壓住前方的瞄準箭頭。 */
@@ -538,22 +526,21 @@
     var fade = 1 - progress;
     var radius = e.r * (0.28 + progress * 0.92) * scale;
     var cx = sx(e.x), cy = sy(e.y);
-    var gas = !!e.tint;
-    var outer = e.tint || '#F26B4B';
-    var warm = gas ? '#E6F5B8' : '#FFE3A0';
-    var core = gas ? '#F8FFE4' : '#FFF7D5';
+    var outer = '#F26B4B';
+    var warm = '#FFE3A0';
+    var core = '#FFF7D5';
 
     ctx.save();
     ctx.globalAlpha = fade;
 
     /* 外圈衝擊波：先擴張再淡出，讓命中位置一眼可見 */
-    ctx.strokeStyle = gas ? '#A6CE78' : '#F08A5B';
+    ctx.strokeStyle = '#F08A5B';
     ctx.lineWidth = Math.max(3, 7 * scale * fade);
     ctx.beginPath();
     ctx.arc(cx, cy, radius * 1.28, 0, Math.PI * 2);
     ctx.stroke();
 
-    /* 放射火花／臭氣尖角 */
+    /* 放射火花尖角 */
     ctx.strokeStyle = warm;
     ctx.lineCap = 'round';
     for (var i = 0; i < 10; i++) {
@@ -582,7 +569,7 @@
     ctx.fill();
 
     /* 幾顆不規則煙霧泡泡，避免效果看起來只是單純圓形 */
-    ctx.fillStyle = gas ? '#C8E6A0' : '#8E8195';
+    ctx.fillStyle = '#8E8195';
     ctx.globalAlpha = fade * 0.62;
     for (var j = 0; j < 7; j++) {
       var puffAngle = -Math.PI / 2 + j * (Math.PI * 2 / 7);
@@ -675,13 +662,12 @@
     clearTimeout(animGuard);
     animGuard = 0;
     lastTrail = sub.points && sub.points.length ? sub.points : lastTrail;
-
-    if (sub.impact && !shot.item) {
-      /* 只有選砲彈時才播放爆炸圈；特殊道具保留自己的投射物外觀。 */
+    if (sub.impact && shot.item === 'stink') {
+      /* 只有選到砲彈道具時才播放這個爆炸特效；其他道具維持原本效果。 */
       var mod = Rules.modOf(shot.item);
       effects.push({
         type: 'boom', x: sub.impact.x, y: sub.impact.y, r: mod.blastR * 0.62,
-        at: Date.now(), life: reduceMotion ? 220 : 620, tint: shot.item === 'stink' ? '#C8E6A0' : null
+        at: Date.now(), life: reduceMotion ? 220 : 620
       });
       shake = shot.result === 'direct' ? 16 : (shot.result === 'miss' ? 6 : 11);
       if (w.__projectileProbe) w.__projectileProbe.boomEffects++;
@@ -777,7 +763,9 @@
     canvasWrap = canvas.parentElement;
     ctx = canvas.getContext('2d');
     /* 提前解碼砲彈 SVG，讓第一次選砲彈時也能直接顯示完整圖案。 */
-    ammoImage(null, null);
+    ammoImage('cat', null);
+    ammoImage('dog', null);
+    ammoImage(null, 'stink');
     if (w.ResizeObserver) new ResizeObserver(function () { resize(); }).observe(stage);
     /* ResizeObserver 的通知綁在「更新畫面」那一步，分頁在背景時不會送達，
      * 所以另外補上 resize / orientationchange / 回到前景 三個入口，
