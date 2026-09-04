@@ -735,3 +735,24 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
   .btn3d.fire{min-height:46px;font-size:.92rem;min-width:112px;padding:8px 14px calc(8px + var(--d))}
   .itemheal{min-height:46px;padding:8px 12px calc(8px + var(--d))}
 }
+
+/* ================================================================
+ * 手機軟體鍵盤修正（js/keyboard.js 量測後寫入 --app-h／--kb）
+ * 鍵盤彈出時把滿版高度改成「真正看得到的高度」，聊天室輸入框才不會
+ * 被鍵盤蓋住；沒有鍵盤時兩個變數都不生效，版面與原本完全一樣。
+ * ================================================================ */
+#app{height:var(--app-h,100%);min-height:var(--app-h,100dvh)}
+
+/* 版面用 user-select:none 防拖曳，但可輸入的欄位一定要能選字 */
+input,textarea,select{user-select:text;-webkit-user-select:text}
+
+/* iOS 對 font-size < 16px 的欄位聚焦時會自動放大整頁，放大後輸入框常被推出畫面 */
+@media (pointer:coarse){
+  .chatbar .field,.chat-form input,.chatform input,
+  #chat-input,#chatInput,#room-chatinput,#game-chatinput{font-size:16px}
+}
+
+/* 左側操作摘要是 position:fixed，鍵盤升起時底部要讓開 */
+body.kb-open .battle-aside{bottom:var(--kb,0px)}
+/* 聊天面板固定高度在矮畫面會把輸入列頂出去，鍵盤打開時改成看畫面剩多少 */
+body.kb-open .chat-panel{height:min(46vh,300px,calc(var(--app-h,100dvh) - 116px))}
