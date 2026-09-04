@@ -477,6 +477,18 @@ async function main() {
 
   /* 鍵盤調角度與力道 */
   await cdp.waitFor('window.CatDogApp.solo.state.turn === "cat" && !window.CatDogApp.solo.thinking', 12000, '輪到玩家');
+  await cdp.eval('window.__probe.click("[data-stage-side=cat][data-stage-item=stink]"); return 1;');
+  await cdp.waitFor('window.CatDogApp.item === "stink"', 2000, '選定臭彈');
+  check('單機：選定道具後會鎖定本回合選擇',
+    await cdp.eval('return window.CatDogApp.item === "stink" && document.querySelector("[data-stage-item=double]").disabled;'));
+  await cdp.eval('window.__probe.click("[data-stage-side=cat][data-stage-item=double]"); return 1;');
+  await sleep(120);
+  check('單機：已選道具不能改成另一個道具',
+    await cdp.eval('return window.CatDogApp.item === "stink";'));
+  await cdp.eval('window.CatDogApp.aim.angle = 72; window.CatDogApp.aim.power = 84; document.getElementById("b-reset-aim").click(); return 1;');
+  await sleep(120);
+  check('單機：重置會恢復角度與力道但保留已選道具',
+    await cdp.eval('var a=window.CatDogApp.aim; return a.angle === 45 && a.power === 60 && window.CatDogApp.item === "stink";'));
   const aim0 = (await cdp.json('window.__probe.game()')).aim;
   for (const key of ['ArrowRight', 'ArrowRight', 'ArrowUp']) {
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: key, windowsVirtualKeyCode: key === 'ArrowUp' ? 38 : 39 });
@@ -702,9 +714,10 @@ async function main() {
   await P3.waitFor('window.CatDogApp.screen === "s-lobby"', 8000, '觀眾進大廳');
   await P3.waitFor('Online.status().status === "connected"', 12000, '觀眾連線');
   await P3.eval('Online.send("lobby:subscribe"); return 1;');
-  await P3.waitFor('document.querySelector("[data-lobby=watch][data-code=' + code + ']")', 10000, '大廳出現這間房');
+  const watchSelector = '[data-lobby="watch"][data-code="' + code + '"]';
+  await P3.waitFor('document.querySelector(' + JSON.stringify(watchSelector) + ')', 10000, '大廳出現這間房');
   check('線上：大廳列表看得到這間房並提供觀戰按鈕', true);
-  await P3.eval('window.__probe.click("[data-lobby=watch][data-code=' + code + ']"); return 1;');
+  await P3.eval('window.__probe.click(' + JSON.stringify(watchSelector) + '); return 1;');
   await P3.waitFor('window.CatDogApp.online.view && window.CatDogApp.online.view.room.code === "' + code + '"', 12000, '觀眾進房');
   check('線上：第三個分頁以觀戰身分進房',
     (await P3.json('window.__probe.game()')).role === 'spectator');

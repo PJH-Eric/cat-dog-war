@@ -10,7 +10,7 @@
  *   HOST                 監聽介面，預設 0.0.0.0
  *   GAME_ALLOWED_ORIGIN  允許連進來的前端來源，逗號分隔；* 代表不限制
  *   AI_THINK_SCALE       AI 思考延遲倍率（自動化測試會設成 0 讓它立刻出手）
- *   ROOM_TURN_MS         每回合思考時間（毫秒）
+ *   ROOM_TURN_MS         每回合出手時限（毫秒）
  */
 'use strict';
 
@@ -29,7 +29,7 @@ const { RoomStore, sanitizeName, sanitizeText } = require('./lib/rooms.js');
 const PORT = Number(process.env.PORT || 3020);
 const HOST = process.env.HOST || '0.0.0.0';
 const AI_THINK_SCALE = process.env.AI_THINK_SCALE === undefined ? 1 : Number(process.env.AI_THINK_SCALE);
-const TURN_MS = Number(process.env.ROOM_TURN_MS || 90000);
+const TURN_MS = Number(process.env.ROOM_TURN_MS || Rules.CONST.TURN_MS);
 const STARTED_AT = Date.now();
 const AI_PLAYBACK_BUFFER_MS = 450;
 
@@ -184,6 +184,18 @@ function fail(socket, message, code) {
   socket.emit('room:error', { message: String(message || '操作失敗'), code: code || 'invalid' });
 }
 
+/** 在玩家送出行動的同一刻補做逾時判定，避免等到下一次定時工作才放行。 */
+function resolveExpiredTurn(room, timestamp) {
+  if (!room.turnExpired(timestamp)) return null;
+  const res = room.timeoutTurn(timestamp);
+  if (!res.ok) return null;
+  room.system(Rules.SIDE_LABEL[res.shot.side] + '出手時間到，這一回合自動跳過。', timestamp);
+  broadcastShot(room, res.shot);
+  syncLobby();
+  scheduleAi(room);
+  return res;
+}
+
 /* ------------------------------------------------------------ AI 回合 */
 
 function clearAiTimer(code) {
@@ -219,6 +231,7 @@ function scheduleAi(room, previousShot) {
   const timer = setTimeout(() => {
     aiTimers.delete(room.code);
     if (!store.get(room.code)) return;
+    if (resolveExpiredTurn(room, now())) return;
     const rng = RNG.createRng('ai:' + room.code + ':' + room.state.turnNo + ':' + Math.random());
     const res = room.fireAi(side, now(), rng);
     if (!res.ok) return;
@@ -379,16 +392,36 @@ io.on('connection', (socket) => {
   }));
 
   socket.on('room:fire', withRoom((room, p) => {
-    const res = room.fire(socket.data.clientId, { angle: p.angle, power: p.power, item: p.item }, now());
+    const t = now();
+    if (resolveExpiredTurn(room, t)) return;
+    const res = room.fire(socket.data.clientId, { angle: p.angle, power: p.power, item: p.item }, t);
     if (!res.ok) return fail(socket, res.error, res.code);
     broadcastShot(room, res.shot);
     syncLobby();
     scheduleAi(room, res.shot);
   }));
 
+  socket.on('room:selectItem', withRoom((room, p, ack) => {
+    const t = now();
+    if (resolveExpiredTurn(room, t)) {
+      if (typeof ack === 'function') ack({ ok: false, error: '出手時間已到，這一回合已自動跳過。', code: 'timeout' });
+      return;
+    }
+    const res = room.selectItem(socket.data.clientId, p.item, t);
+    if (!res.ok) {
+      fail(socket, res.error, res.code);
+      if (typeof ack === 'function') ack(res);
+      return;
+    }
+    syncRoom(room);
+    if (typeof ack === 'function') ack({ ok: true, item: res.item });
+  }));
+
   /* 補血是獨立事件：不發射砲彈，用完直接換手 */
   socket.on('room:heal', withRoom((room) => {
-    const res = room.heal(socket.data.clientId, now());
+    const t = now();
+    if (resolveExpiredTurn(room, t)) return;
+    const res = room.heal(socket.data.clientId, t);
     if (!res.ok) return fail(socket, res.error, res.code);
     broadcastShot(room, res.shot);
     syncLobby();
@@ -480,13 +513,7 @@ setInterval(() => {
   const t = now();
 
   /* 回合逾時：伺服器代為跳過，兩邊摘要都看得到 */
-  for (const room of store.dueTurns(t)) {
-    const res = room.timeoutTurn(t);
-    if (!res.ok) continue;
-    room.system(Rules.SIDE_LABEL[res.shot.side] + '思考時間到，這一回合自動跳過。', t);
-    broadcastShot(room, res.shot);
-    scheduleAi(room);
-  }
+  for (const room of store.dueTurns(t)) resolveExpiredTurn(room, t);
 
   /* 回收：斷線太久的人、完全沒人的空房 */
   const swept = store.sweep(t);

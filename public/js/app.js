@@ -10,6 +10,7 @@
   var Rules = w.Rules, AI = w.AI, RNG = w.RNG, UI = w.UI, Board = w.Board;
   var Sound = w.Sound, Store = w.Store, Config = w.GameConfig, Online = w.Online;
   var C = Rules.CONST;
+  var TURN_MS = C.TURN_MS || 15 * 1000;
   var ONLINE_TURN_PAUSE_MS = 650;
 
   var $ = function (id) { return document.getElementById(id); };
@@ -38,7 +39,7 @@
     lastTurnAnnounced: '',
     solo: {
       state: null, mySide: 'cat', aiSide: 'dog', level: 'normal',
-      seed: '', summary: [], aiTimer: null, thinking: false
+      seed: '', summary: [], aiTimer: null, thinking: false, turnDeadline: 0
     },
     online: {
       view: null, code: null, pendingInvite: null, netStatus: 'idle', netMessage: '',
@@ -148,7 +149,7 @@
       html: '<ul>' +
         '<li><b>單機對戰</b>：選一邊、選難度就能開打。簡單／普通／困難用的是同一套規則和同一個物理引擎，電腦不會偷改傷害，差別只在它算得多細、補不補償風向、手抖多大。</li>' +
         '<li><b>線上對戰</b>：開一間房，把邀請連結傳給朋友，兩台不同電腦各選一邊就能打；其他人可以進來<b>觀戰</b>，觀戰者看得到盤面和摘要，但不能出手。</li>' +
-        '<li>房間裡有<b>聊天室</b>（戰場左下角的 💬），還有每回合 90 秒的思考時間，超過會自動跳過那一回合；對局會一直進行到一方血量歸零，也可以主動投降。</li>' +
+        '<li>房間裡有<b>聊天室</b>（戰場左下角的 💬），每次出手限時 <b>15 秒</b>，超過會自動跳過那一回合；對局會一直進行到一方血量歸零，也可以主動投降。</li>' +
         '</ul>' +
         '<p>右上角的 <b>⚙ 系統設定</b> 可調整全域的音樂、音效、震動與顯示偏好；進入對戰後，戰場上方會出現 <b>🎮 對戰設定</b>。</p>'
     }
@@ -200,7 +201,7 @@
       summary: s.summary,
       members: null,
       room: null,
-      deadline: 0,
+      deadline: s.turnDeadline || 0,
       net: '單機（不需要連線）',
       thinking: s.thinking,
       levelLabel: AI.levelOf(s.level).label
@@ -256,6 +257,7 @@
   function resetOnlinePlayback() {
     app.online.shotQueue.length = 0;
     app.online.waitingForShot = false;
+    app.item = null;
     clearTimeout(app.online.shotPauseTimer);
     app.online.shotPauseTimer = null;
   }
@@ -349,11 +351,11 @@
     $('wind-chip').setAttribute('aria-label', '風向 ' + Rules.describeWind(wind));
 
     var timer = $('timer-chip');
-    if (ctx.mode === 'online' && ctx.phase === 'playing' && ctx.deadline) {
+    if (ctx.phase === 'playing' && ctx.deadline) {
       var left = Math.max(0, Math.ceil((ctx.deadline - Date.now()) / 1000));
       timer.hidden = false;
       timer.textContent = '⏱ ' + left + ' 秒';
-      timer.setAttribute('data-urgent', left <= 15 ? 'true' : 'false');
+      timer.setAttribute('data-urgent', left <= 5 ? 'true' : 'false');
     } else {
       timer.hidden = true;
     }
@@ -433,14 +435,15 @@
     hud.innerHTML = ['cat', 'dog'].map(function (side) {
       var own = ctx.mySide === side;
       var can = own && !!ctx.canFire;
+      var locked = own && !!app.item;
       var bag = g.items[side] || {};
       var controls = [];
 
       if (own) {
-        controls.push('<button class="stage-item-btn' + (!app.item ? ' selected' : '') + '"' +
+        controls.push('<button class="stage-item-btn' + (!app.item ? ' selected' : '') + (locked ? ' locked' : '') + '"' +
           ' type="button" role="radio" data-stage-side="' + side + '" data-stage-item=""' +
           ' aria-label="' + esc(Rules.SIDE_LABEL[side]) + '這一發不用道具"' +
-          ' aria-checked="' + (!app.item ? 'true' : 'false') + '"' + (can ? '' : ' disabled') + '>' +
+          ' aria-checked="' + (!app.item ? 'true' : 'false') + '"' + (can && !locked ? '' : ' disabled') + '>' +
           '<span class="ico">🎯</span><span class="num">—</span></button>');
       }
 
@@ -449,8 +452,8 @@
         var n = bag[key] || 0;
         var out = n <= 0;
         var selected = own && app.item === key;
-        var enabled = can && !out;
-        controls.push('<button class="stage-item-btn' + (out ? ' used' : '') + (selected ? ' selected' : '') + '"' +
+        var enabled = can && !out && !locked;
+        controls.push('<button class="stage-item-btn' + (out ? ' used' : '') + (selected ? ' selected' : '') + (locked ? ' locked' : '') + '"' +
           ' type="button" role="radio" data-stage-side="' + side + '" data-stage-item="' + key + '"' +
           ' aria-label="' + esc(Rules.SIDE_LABEL[side] + '的' + it.label + '，剩 ' + n + ' 個。') + '"' +
           ' title="' + esc(it.label + '：' + it.note) + '" aria-checked="' + (selected ? 'true' : 'false') + '"' +
@@ -460,7 +463,10 @@
 
       return '<section class="stage-item-panel' + (own ? ' mine' : '') + '" data-side="' + side + '"' +
         ' aria-label="' + Rules.SIDE_LABEL[side] + '剩餘道具">' +
-        '<div class="stage-item-head"><b>' + Rules.SIDE_LABEL[side] + '</b><span>' + (own ? '你的道具' : '對手道具') + '</span></div>' +
+        '<div class="stage-item-head"><b>' + Rules.SIDE_LABEL[side] + '</b><span>' + (own ? (locked ? '已鎖定' : '你的道具') : '對手道具') + '</span>' +
+        (own ? '<button class="stage-reset-btn" id="b-reset-aim" type="button" data-stage-reset' +
+          ' aria-label="重置角度與力道；' + (locked ? '保留已選道具' : '不變更道具') + '"' +
+          (can ? '' : ' disabled') + '>↺ 重置</button>' : '') + '</div>' +
         '<div class="stage-item-list" role="radiogroup" aria-label="' + Rules.SIDE_LABEL[side] + '道具">' +
         controls.join('') + '</div></section>';
     }).join('');
@@ -493,10 +499,8 @@
     }
 
     var timerText = '—';
-    if (ctx.mode === 'online' && ctx.phase === 'playing' && ctx.deadline) {
+    if (ctx.phase === 'playing' && ctx.deadline) {
       timerText = Math.max(0, Math.ceil((ctx.deadline - Date.now()) / 1000)) + ' 秒';
-    } else if (ctx.mode === 'solo') {
-      timerText = '不限時';
     }
     var timerEl = $('sum-timer');
     if (timerEl) timerEl.textContent = timerText;
@@ -778,6 +782,7 @@
     var bar = $('itembar');
     var box = $('item-choices');
     var healBtn = $('b-heal');
+    var lockNote = $('item-lock-note');
     var bag = myBag(ctx);
 
     /* 觀戰者與還沒開局時整條收起來，不佔走戰場空間 */
@@ -789,11 +794,16 @@
     bar.hidden = false;
 
     var can = !!ctx.canFire;
+    var locked = !!app.item;
+    bar.setAttribute('data-locked', locked ? 'true' : 'false');
+    lockNote.textContent = locked
+      ? '已選定：' + Rules.ITEMS[app.item].label + '（本回合不能更換）'
+      : '選定後鎖定';
     /* 窄版與橫向只留得下圖示，文字用 .txt 包起來由 CSS 收掉；
      * aria-label 一律寫完整名稱，螢幕閱讀器不會只聽到一個表情符號。 */
     var html = '<button class="itemchip" type="button" role="radio" data-item=""' +
       ' aria-label="不用道具" aria-checked="' + (app.item ? 'false' : 'true') + '"' +
-      (can ? '' : ' disabled') +
+      (can && !locked ? '' : ' disabled') +
       '><span class="ico">🎯</span><span class="txt">不用道具</span></button>';
 
     Rules.ITEM_ORDER.forEach(function (key) {
@@ -801,10 +811,10 @@
       if (it.kind !== 'shot') return;
       var n = bag[key] || 0;
       var out = n <= 0;
-      html += '<button class="itemchip' + (out ? ' used' : '') + '" type="button" role="radio"' +
+      html += '<button class="itemchip' + (out ? ' used' : '') + (locked ? ' locked' : '') + '" type="button" role="radio"' +
         ' data-item="' + key + '" aria-checked="' + (app.item === key ? 'true' : 'false') + '"' +
         ' aria-label="' + esc(it.label) + '，剩 ' + n + ' 個。' + esc(it.note) + '"' +
-        ' title="' + esc(it.label + '：' + it.note) + '"' + (can && !out ? '' : ' disabled') + '>' +
+        ' title="' + esc(it.label + '：' + it.note) + '"' + (can && !out && !locked ? '' : ' disabled') + '>' +
         '<span class="ico">' + it.icon + '</span><span class="txt">' + esc(it.label) + '</span>' +
         '<span class="num">×' + n + '</span></button>';
     });
@@ -819,10 +829,17 @@
     healBtn.title = heal.label + '：' + heal.note;
   }
 
-  /** 選一個道具；再按一次同一個就取消選取 */
+  /** 選一個道具；選定後鎖定到本回合結束，不能改成另一個道具。 */
   function selectItem(key) {
     var next = key || null;
-    app.item = (app.item === next) ? null : next;
+    if (!next) return;
+    if (app.item) {
+      hint('本回合已選定' + Rules.ITEMS[app.item].label + '，不能更換道具。', 'error');
+      Sound.play('blocked');
+      return;
+    }
+    var previous = app.item;
+    app.item = next;
     Sound.play('tick');
     var ctx = currentCtx();
     if (ctx) {
@@ -831,10 +848,31 @@
     }
     if (app.item) {
       var it = Rules.ITEMS[app.item];
-      hint(it.icon + ' ' + it.label + '：' + it.note);
-    } else {
-      hint('這一發不用道具。');
+      hint(it.icon + ' ' + it.label + ' 已鎖定：' + it.note + ' 可按「↺ 重置」重設角度與力道。');
+      if (ctx && ctx.mode === 'online') {
+        if (!Online.send('room:selectItem', { item: app.item }, function (res) {
+          if (res && res.ok) return;
+          app.item = null;
+          renderBattle();
+          toast((res && (res.error || res.message)) || '道具選擇失敗。', 'error');
+        })) {
+          app.item = previous;
+          renderBattle();
+        }
+      }
     }
+  }
+
+  /** 重置本次瞄準；已選定的道具仍然保留並維持鎖定。 */
+  function resetAim() {
+    var ctx = currentCtx();
+    if (!ctx || !ctx.canFire || app.busy) return;
+    if (app.charge.on) endCharge(false, true);
+    setAim(45, 60, true);
+    Sound.play('click');
+    hint(app.item
+      ? '已重置角度與力道；' + Rules.ITEMS[app.item].label + '仍已鎖定。'
+      : '已重置角度與力道。');
   }
 
   /** 使用補血：不發射，回血之後直接換手 */
@@ -1021,8 +1059,10 @@
     s.thinking = false;
     clearTimeout(s.aiTimer);
     s.state = Rules.createState({ seed: s.seed || undefined });
+    s.turnDeadline = Date.now() + TURN_MS;
     app.mode = 'solo';
     app.busy = false;
+    app.item = null;
     Board.clearTrail();
     setAim(45, 60, true);
     show('s-battle');
@@ -1048,6 +1088,7 @@
     app.item = null;                     // 道具用掉了，下一回合重新選
     playShotThen(res, function () {
       s.state = res.state;
+      s.turnDeadline = s.state.over ? 0 : Date.now() + TURN_MS;
       s.summary.push(summaryEntry(res.shot));
       renderBattle();
       afterSoloShot();
@@ -1074,6 +1115,7 @@
       /* 補血沒有砲彈可以播，直接套用狀態並換手 */
       if (action.type === 'heal') {
         s.state = res.state;
+        s.turnDeadline = s.state.over ? 0 : Date.now() + TURN_MS;
         s.summary.push(summaryEntry(res.shot, s.level));
         Sound.play('heal');
         toast(Rules.describeShot(res.shot));
@@ -1083,6 +1125,7 @@
       }
       playShotThen(res, function () {
         s.state = res.state;
+        s.turnDeadline = s.state.over ? 0 : Date.now() + TURN_MS;
         s.summary.push(summaryEntry(res.shot, s.level));
         renderBattle();
         afterSoloShot();
@@ -1090,9 +1133,28 @@
     }, level.thinkMs);
   }
 
+  /** 單機也採用同一個 15 秒出手時限，逾時就交給電腦。 */
+  function soloTimeout() {
+    var s = app.solo;
+    if (!s.state || s.state.over || app.busy || s.thinking || s.state.turn !== s.mySide) return;
+    if (!s.turnDeadline || Date.now() < s.turnDeadline) return;
+
+    var res = Rules.applyPass(s.state, s.mySide, '15 秒出手時間已到，這一回合跳過。');
+    if (!res.ok) return;
+    s.state = res.state;
+    s.turnDeadline = Date.now() + TURN_MS;
+    app.item = null;
+    s.summary.push(summaryEntry(res.shot));
+    Sound.play('warn');
+    toast('15 秒出手時間到，這一回合自動跳過。', 'info');
+    renderBattle();
+    afterSoloShot();
+  }
+
   function afterSoloShot() {
     var s = app.solo;
     if (s.state.over) {
+      s.turnDeadline = 0;
       var outcome = s.state.winner === 'draw' ? 'draw' : (s.state.winner === s.mySide ? 'win' : 'lose');
       Store.recordResult('solo', outcome);
       Sound.play(outcome === 'win' ? 'win' : (outcome === 'lose' ? 'lose' : 'turn'));
@@ -1117,6 +1179,7 @@
     var res = Rules.applySurrender(s.state, s.mySide);
     if (!res.ok) { hint(res.reason, 'error'); return; }
     s.state = res.state;
+    s.turnDeadline = 0;
     s.summary.push(summaryEntry(res.shot));
     app.item = null;
     Store.recordResult('solo', 'lose');
@@ -1310,6 +1373,7 @@
   Online.on('room:sync', function (view) {
     app.online.view = view;
     app.online.code = view.room.code;
+    app.item = view.you && view.you.selectedItem ? view.you.selectedItem : null;
     if (app.mode !== 'online') app.mode = 'online';
     if (app.screen !== 's-battle') show('s-battle');
     announceTurn(view);
@@ -1331,6 +1395,7 @@
       impactFeedback(s);
       app.busy = false;
       app.online.view = payload.view;
+      app.item = null;
       if (payload.view.game && payload.view.game.over) recordOnlineOutcome(payload.view);
       else Sound.play('turn');
       if (app.online.shotQueue.length) {
@@ -1693,6 +1758,11 @@
       selectItem(b.getAttribute('data-item'));
     });
     $('stage-items').addEventListener('click', function (e) {
+      var reset = e.target.closest('[data-stage-reset]');
+      if (reset) {
+        if (!reset.disabled) resetAim();
+        return;
+      }
       var b = e.target.closest('[data-stage-item]');
       if (!b || b.disabled) return;
       var ctx = currentCtx();
@@ -1906,9 +1976,10 @@
       var ctx = currentCtx();
       if (!ctx) return;
       renderTurnbar(ctx);
-      if (ctx.mode === 'online' && ctx.phase === 'playing' && ctx.deadline) {
+      if (ctx.phase === 'playing' && ctx.deadline) {
         $('sum-timer').textContent = Math.max(0, Math.ceil((ctx.deadline - Date.now()) / 1000)) + ' 秒';
       }
+      if (ctx.mode === 'solo') soloTimeout();
     }, 500);
 
     w.addEventListener('resize', function () { UI.repaintAll(); });

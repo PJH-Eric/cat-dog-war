@@ -197,7 +197,7 @@
           <div class="turnbar">
             <span class="chip chip-turn" id="turn-chip" role="status" aria-live="polite">準備中</span>
             <span class="chip chip-wind" id="wind-chip"><span class="windsvg" id="wind-svg" aria-hidden="true"></span><b id="wind-text">無風</b></span>
-            <span class="chip chip-timer" id="timer-chip" hidden>90 秒</span>
+            <span class="chip chip-timer" id="timer-chip" hidden>15 秒</span>
           </div>
 
           <button class="btn3d small icononly aside-toggle" data-color="lemon" id="b-aside-toggle"
@@ -269,7 +269,8 @@
           <div class="itembar" id="itembar">
             <span class="itembar-label">道具</span>
             <div class="item-choices" id="item-choices" role="radiogroup"
-                 aria-label="這一發要搭配的道具，最多選一個"></div>
+                 aria-label="這一發要搭配的道具，選定後不能更換"></div>
+            <span class="item-lock-note" id="item-lock-note" role="status" aria-live="polite">選定後鎖定</span>
             <button class="btn3d small itemheal" data-color="rose" id="b-heal" type="button">
               <span class="ico">💖</span>補血
             </button>

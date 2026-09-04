@@ -114,7 +114,7 @@ async function main() {
       PORT: String(PORT),
       HOST: '127.0.0.1',
       AI_THINK_SCALE: '0',
-      ROOM_TURN_MS: '60000',
+      ROOM_TURN_MS: '15000',
       GAME_ALLOWED_ORIGIN: '*'
     }),
     stdio: ['ignore', 'pipe', 'pipe']
@@ -298,6 +298,17 @@ async function main() {
         !!watcher.lastError() && /觀戰/.test(watcher.lastError().message),
         watcher.lastError() && watcher.lastError().message);
 
+      /* 先選臭彈：伺服器要鎖住本回合選擇，三方都看得到 */
+      const picked = await turnCli.ask('room:selectItem', { item: 'stink' });
+      check('玩家可以先選定臭彈', picked && picked.ok, JSON.stringify(picked));
+      await turnCli.until((v) => v.you.selectedItem === 'stink', '臭彈選擇同步');
+      turnCli.errors.length = 0;
+      turnCli.send('room:selectItem', { item: 'double' });
+      await sleep(220);
+      check('本回合已選道具不能更換',
+        !!turnCli.lastError() && turnCli.lastError().code === 'item_locked',
+        JSON.stringify(turnCli.lastError()));
+
       /* 帶臭彈射一發：伺服器要扣掉道具，三方都看得到 */
       let v0 = host.view.game.version;
       turnCli.send('room:fire', { angle: 50, power: 70, item: 'stink' });
@@ -328,6 +339,8 @@ async function main() {
         turnCli.lastError() && turnCli.lastError().message);
 
       /* 雙擊：彈道事件要帶兩發 */
+      const pickedDouble = await turnCli.ask('room:selectItem', { item: 'double' });
+      check('下一次出手可以重新選擇道具', pickedDouble && pickedDouble.ok, JSON.stringify(pickedDouble));
       v0 = host.view.game.version;
       const shotsBefore = watcher.shots.length;
       turnCli.send('room:fire', { angle: 55, power: 72, item: 'double' });

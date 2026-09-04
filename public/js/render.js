@@ -338,7 +338,7 @@
 
   function drawFighter(f, isTurn) {
     var img = bodyImage(f.side, f.mood || 'idle');
-    var SIZE_W = 96;                     // 角色在世界座標裡的高度，放大命中部位也更清楚
+    var SIZE_W = 112;                    // 放大角色本體，讓貓狗在平板與桌機上更醒目
     var size = SIZE_W * scale;
     var wpx = size * (BODY_VB_W / BODY_VB_H);
     var x = sx(f.x) - wpx / 2;

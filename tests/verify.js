@@ -793,7 +793,7 @@ group('7. 房間狀態機');
 const T0 = 1700000000000;
 
 function freshStore(opts) {
-  return new RoomStore(Object.assign({ turnMs: 90000, graceMs: 1000, emptyMs: 2000 }, opts || {}));
+  return new RoomStore(Object.assign({ turnMs: 15000, graceMs: 1000, emptyMs: 2000 }, opts || {}));
 }
 
 test('建立房間後房主入座、房號可查', () => {
@@ -929,7 +929,34 @@ test('輪到誰才能發射，出手後換人', () => {
   assert.ok(room.summary[0].text.includes('力道'));
   assert.ok(!/角度\s*\d+°/.test(room.summary[0].text));
   assert.notStrictEqual(room.state.turn, first);
-  assert.strictEqual(room.turnDeadline, T0 + 1000 + 90000);
+  assert.strictEqual(room.turnDeadline, T0 + 1000 + 15000);
+});
+
+test('道具第一次選定後會鎖定，出手完成後才解除', () => {
+  const store = freshStore();
+  const room = store.create('a', { name: 'A', now: T0 }).room;
+  room.join('b', { name: 'B', role: 'player', now: T0 });
+  room.pickSide('a', 'cat'); room.pickSide('b', 'dog');
+  room.setReady('a', true); room.setReady('b', true);
+  room.start('a', T0);
+
+  const side = room.state.turn;
+  const playerId = side === 'cat' ? 'a' : 'b';
+  const selected = room.selectItem(playerId, 'stink', T0 + 100);
+  assert.strictEqual(selected.ok, true);
+  assert.strictEqual(room.selectedItems[side], 'stink');
+  assert.strictEqual(room.viewFor(playerId, T0 + 100).you.selectedItem, 'stink');
+
+  const changed = room.selectItem(playerId, 'double', T0 + 200);
+  assert.strictEqual(changed.ok, false);
+  assert.strictEqual(changed.code, 'item_locked');
+  const wrongFire = room.fire(playerId, { angle: 45, power: 60, item: 'double' }, T0 + 300);
+  assert.strictEqual(wrongFire.ok, false);
+  assert.strictEqual(wrongFire.code, 'item_locked');
+
+  const fired = room.fire(playerId, { angle: 45, power: 60, item: 'stink' }, T0 + 400);
+  assert.strictEqual(fired.ok, true);
+  assert.strictEqual(room.selectedItems[side], null);
 });
 
 test('AI 席位由伺服器出手，用戶端無法代打', () => {
@@ -969,10 +996,10 @@ test('回合逾時由伺服器代為跳過並寫進摘要', () => {
   room.start('a', T0);
 
   assert.strictEqual(store.dueTurns(T0 + 1000).length, 0);
-  const due = store.dueTurns(T0 + 91000);
+  const due = store.dueTurns(T0 + 16000);
   assert.strictEqual(due.length, 1);
   const before = room.state.turn;
-  const r = room.timeoutTurn(T0 + 91000);
+  const r = room.timeoutTurn(T0 + 16000);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.shot.result, 'pass');
   assert.notStrictEqual(room.state.turn, before);

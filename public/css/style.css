@@ -305,6 +305,13 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .stage-item-head{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:0 3px 3px}
 .stage-item-head b{font-size:.72rem;white-space:nowrap}
 .stage-item-head span{font-size:.62rem;font-weight:800;color:var(--ink-soft);white-space:nowrap}
+.stage-reset-btn{
+  min-width:48px;min-height:48px;padding:5px 8px;border:2px solid var(--line);border-radius:10px;background:#fff;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:var(--ink);font:inherit;font-size:.66rem;font-weight:900;cursor:pointer;white-space:nowrap;
+}
+.stage-reset-btn:disabled{opacity:.42;cursor:default}
+.stage-reset-btn:focus-visible{outline:3px solid var(--sky-d);outline-offset:2px}
 .stage-item-list{display:flex;flex-wrap:wrap;gap:3px}
 .stage-item-btn{
   flex:1 0 48px;min-width:48px;height:48px;padding:4px 5px;
@@ -315,6 +322,7 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
 .stage-item-btn .ico{font-size:.95rem;line-height:1}
 .stage-item-btn .num{font-size:.67rem;font-weight:900;font-variant-numeric:tabular-nums}
 .stage-item-btn.selected{border-color:var(--grape-d);background:var(--grape);box-shadow:0 0 0 2px rgba(164,143,219,.28)}
+.stage-item-btn.locked:not(.selected){opacity:.42}
 .stage-item-btn.used{opacity:.4}
 .stage-item-btn:disabled{cursor:default}
 .stage-item-btn:focus-visible{outline:3px solid var(--sky-d);outline-offset:2px}
@@ -650,12 +658,19 @@ body.charge-active #board,body.charge-active #b-fire{cursor:grabbing}
   .battle.aside-open .chatdock{left:8px;visibility:hidden;pointer-events:none}
 }
 
+/* 窄版聊天面板縮短，避免從底部往上蓋住天空中的道具 HUD。 */
+@media (max-width:620px){
+  .chat-panel{height:min(28vh,200px)}
+}
+
 /* ============================ 道具列與蓄力條 ============================ */
 
 /* 道具列排在角度／力道之上。
    一律用換行而不是橫向捲動：捲動在手機上很容易被忽略，也會讓元素跑出視窗外。 */
 .itembar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .itembar-label{flex:0 0 auto;font-weight:800;font-size:.86rem;color:var(--ink-soft)}
+.item-lock-note{flex:0 1 auto;font-size:.72rem;font-weight:800;color:var(--ink-soft)}
+.itembar[data-locked="true"] .item-lock-note{color:var(--grape-t)}
 .item-choices{display:flex;gap:6px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .itemchip{
   flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;
