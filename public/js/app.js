@@ -64,6 +64,7 @@
   function show(id) {
     if (isSettingsOpen()) closeSettings();
     if (isBattleSettingsOpen()) closeBattleSettings();
+    if (id !== 's-battle' && root.NetworkLatency) root.NetworkLatency.setActive(false);
     SCREENS.forEach(function (s) {
       var el = $(s);
       if (el) el.classList.toggle('active', s === id);
@@ -277,6 +278,7 @@
   function renderBattle() {
     var ctx = currentCtx();
     if (!ctx) return;
+    if (root.NetworkLatency) root.NetworkLatency.setActive(app.screen === 's-battle' && app.mode === 'online' && !!ctx.room && ctx.room.phase === 'playing' && !!ctx.game && !ctx.game.over);
 
     if (ctx.game) Board.setState(ctx.game);
     renderHp(ctx);

@@ -250,6 +250,8 @@ io.on('connection', (socket) => {
   socket.data.name = '玩家';
   socket.data.roomCode = null;
 
+  socket.on('latency:ping', (_sentAt, ack) => { if (typeof ack === 'function') ack(); });
+
   socket.on('hello', (payload, ack) => {
     const p = payload || {};
     let id = String(p.clientId || '').trim();

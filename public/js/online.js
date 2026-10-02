@@ -81,6 +81,7 @@
         reconnectionDelayMax: 6000,
         timeout: 12000
       });
+      if (w.NetworkLatency) w.NetworkLatency.bindSocketIo(socket);
 
       socket.on('connect', function () {
         setStatus('connected');
