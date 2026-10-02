@@ -24,6 +24,9 @@
   let timer = 0;
   let probeSequence = 0;
   let boundSocket = null;
+  let dockTimer = 0;
+  // 各遊戲右上角的設定鈕；徽章掛在它正下方，不再另外浮在遊戲畫面上
+  const anchorSelector = '#b-settings, #btn-gear, #btn-settings, #btn-settings-game, #btn-settings-global, .settings-fab, .gear-btn, .settings-trigger';
 
   function ensureMeter() {
     if (meter) return meter;
@@ -41,6 +44,54 @@
     return meter;
   }
 
+  function findAnchor() {
+    let best = null;
+    let bestRect = null;
+    document.querySelectorAll(anchorSelector).forEach(function (btn) {
+      if (btn.closest('[hidden]')) return;
+      const r = btn.getBoundingClientRect();
+      if (r.width < 8 || r.height < 8 || r.bottom <= 0 || r.top > 160) return;
+      const style = getComputedStyle(btn);
+      if (style.visibility === 'hidden' || Number(style.opacity) === 0) return;
+      // 有多顆時取最靠右上的那顆
+      if (!bestRect || r.right > bestRect.right + 4 || (Math.abs(r.right - bestRect.right) <= 4 && r.top < bestRect.top)) {
+        best = btn;
+        bestRect = r;
+      }
+    });
+    return best ? { el: best, rect: bestRect } : null;
+  }
+
+  // 沿用設定鈕所在的最外層堆疊層級：徽章疊在設定鈕上，但仍會被彈窗蓋住
+  function stackLevel(el) {
+    let level = null;
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+      const z = parseInt(getComputedStyle(node).zIndex, 10);
+      if (Number.isFinite(z)) level = z;
+    }
+    return level;
+  }
+
+  function dock() {
+    if (!meter || !active) return;
+    const anchor = findAnchor();
+    const style = meter.style;
+    if (!anchor) {
+      meter.classList.remove('is-docked');
+      style.left = style.top = style.zIndex = style.minWidth = '';
+      return;
+    }
+    const r = anchor.rect;
+    const level = stackLevel(anchor.el);
+    meter.classList.add('is-docked');
+    style.zIndex = level === null ? '' : String(level);
+    style.minWidth = Math.round(Math.min(r.width, 64)) + 'px';
+    const w = meter.offsetWidth;
+    const h = meter.offsetHeight;
+    style.left = Math.round(Math.max(4, Math.min(window.innerWidth - w - 4, r.left + r.width / 2 - w / 2))) + 'px';
+    style.top = Math.round(r.bottom - h * 0.4) + 'px';
+  }
+
   function render() {
     const el = ensureMeter();
     el.hidden = !active;
@@ -51,6 +102,7 @@
     el.querySelector('.latency-meter__value').textContent = ms === null ? '--' : String(ms);
     el.setAttribute('aria-label', ms === null ? '連線延遲，等待回應' : '連線延遲 ' + ms + ' 毫秒');
     el.title = ms === null ? '連線延遲：等待回應' : '連線延遲：' + ms + ' ms';
+    dock();
   }
 
   function report(ms) {
@@ -73,7 +125,9 @@
     if (active === next) return;
     active = next;
     clearInterval(timer);
+    clearInterval(dockTimer);
     timer = 0;
+    dockTimer = 0;
     if (!active) {
       value = null;
       render();
@@ -82,6 +136,8 @@
     render();
     runProbe();
     timer = setInterval(runProbe, 2500);
+    // 設定鈕會隨畫面切換、橫直向改變位置，定時跟上
+    dockTimer = setInterval(dock, 400);
   }
 
   function bindSocketIo(socket) {
@@ -100,6 +156,8 @@
       if (boundSocket === socket) report(null);
     });
   }
+
+  root.addEventListener('resize', dock);
 
   root.NetworkLatency = { setActive, setProbe, report, bindSocketIo };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureMeter, { once: true });

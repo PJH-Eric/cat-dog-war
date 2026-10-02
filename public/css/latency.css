@@ -1,8 +1,10 @@
+/* 連線延遲徽章：由 latency.js 掛在右上角設定鈕正下方（.is-docked），找不到設定鈕時退回右上角 */
 #network-latency {
-  --meter-surface: linear-gradient(180deg, #fffdf8 0%, #f6eee3 100%);
+  --meter-surface: #fffdf8;
   --meter-ink: #4a3b55;
   --meter-edge: #765a62;
-  --meter-shadow: #634a56;
+  --meter-dot: #958d91;
+  --meter-tint: #786f79;
   position: fixed;
   z-index: 40;
   top: calc(64px + env(safe-area-inset-top, 0px));
@@ -10,65 +12,75 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-width: 74px;
-  min-height: 30px;
-  padding: 4px 9px;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 20px;
+  padding: 0 7px 0 6px;
   border: 1.5px solid var(--meter-edge);
   border-radius: 999px;
   color: var(--meter-ink);
   background: var(--meter-surface);
-  box-shadow: inset 0 1px 0 #ffffffc9, 0 2px 0 var(--meter-shadow), 0 4px 9px #352a3924;
-  font: 800 12px/1 "Yuanti TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  box-shadow: 0 1px 0 #ffffffb3 inset, 0 2px 5px #2e233026;
+  font: 800 11px/1 "Yuanti TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
   white-space: nowrap;
   pointer-events: none;
+  user-select: none;
+  transition: border-color .25s ease, background-color .25s ease;
 }
-
+#network-latency.is-docked { right: auto; }
 #network-latency[hidden] { display: none; }
 #network-latency .latency-meter__icon { display: none; }
+
 #network-latency .latency-meter__light {
-  width: 7px;
-  height: 7px;
+  position: relative;
+  width: 6px;
+  height: 6px;
   flex: none;
-  border: 1px solid #ffffff;
   border-radius: 50%;
-  background: #958d91;
-  box-shadow: 0 0 0 1px #766e72;
+  background: var(--meter-dot);
+}
+#network-latency.is-good .latency-meter__light::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: var(--meter-dot);
+  opacity: .45;
+  animation: latency-pulse 2.5s ease-out infinite;
 }
 #network-latency .latency-meter__value {
-  min-width: 24px;
-  text-align: right;
-  font-size: 12px;
+  color: var(--meter-tint);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
 }
 #network-latency .latency-meter__unit {
-  opacity: .68;
-  font-size: 9px;
+  margin-left: -2px;
+  opacity: .6;
+  font-size: 8.5px;
   font-weight: 900;
-  letter-spacing: .03em;
 }
-#network-latency.is-good .latency-meter__light { background: #36b65d; box-shadow: 0 0 0 1px #218542, 0 0 6px #36b65d88; }
-#network-latency.is-warn .latency-meter__light { background: #f0a126; box-shadow: 0 0 0 1px #bd7110, 0 0 6px #f0a12688; }
-#network-latency.is-bad .latency-meter__light { background: #e04444; box-shadow: 0 0 0 1px #b52d36, 0 0 6px #e0444488; }
-#network-latency.is-unknown .latency-meter__light { background: #958d91; }
-#network-latency.is-good .latency-meter__value { color: #247c42; }
-#network-latency.is-warn .latency-meter__value { color: #a85d08; }
-#network-latency.is-bad .latency-meter__value { color: #bd3434; }
-#network-latency.is-unknown .latency-meter__value { color: #786f79; }
 
-#network-latency[data-skin="cat-dog-war"] { --meter-surface: linear-gradient(145deg, #fff4ed, #ffe3e7); --meter-ink: #533852; --meter-edge: #d990a0; --meter-shadow: #b76b7c; border-radius: 12px 15px 11px 15px; }
-#network-latency[data-skin="caterpillar-race"] { --meter-surface: linear-gradient(155deg, #f1f9dc, #d9efb3); --meter-ink: #31532c; --meter-edge: #6b9650; --meter-shadow: #527b3c; border-width: 2px; }
-#network-latency[data-skin="chinese-checkers"] { --meter-surface: linear-gradient(145deg, #fffefa, #f0edf9); --meter-ink: #342f44; --meter-edge: #81749c; --meter-shadow: #675a81; border-radius: 9px 13px 9px 13px; }
-#network-latency[data-skin="draw-guess"] { --meter-surface: #fffdf8; --meter-ink: #4a3b55; --meter-edge: #887496; --meter-shadow: #b39a80; border-style: dashed; border-radius: 8px 13px 8px 12px; }
-#network-latency[data-skin="flip-match"] { --meter-surface: linear-gradient(145deg, #e8faf5, #cceee6); --meter-ink: #493e36; --meter-edge: #6e9285; --meter-shadow: #5b766a; border-radius: 8px 12px 9px 7px; }
-#network-latency[data-skin="fruit-link"] { --meter-surface: linear-gradient(145deg, #fff8df, #ffedc2); --meter-ink: #493e36; --meter-edge: #bd8b4c; --meter-shadow: #9b7142; }
-#network-latency[data-skin="heart-attack"] { --meter-surface: linear-gradient(120deg, #fff0e3, #ffe0dc); --meter-ink: #52384c; --meter-edge: #bb7186; --meter-shadow: #9e637b; border-radius: 15px 15px 9px 9px; }
-#network-latency[data-skin="richman"] { --meter-surface: linear-gradient(145deg, #fff4bf, #f4d975); --meter-ink: #68452b; --meter-edge: #aa8244; --meter-shadow: #886632; border-radius: 7px 7px 5px 5px; }
-#network-latency[data-skin="stair-kids"] { --meter-surface: linear-gradient(140deg, #f3f9e7, #deedc6); --meter-ink: #394b35; --meter-edge: #78935f; --meter-shadow: #65824c; border-radius: 6px 12px 6px 12px; }
-#network-latency[data-skin="sudoku"] { --meter-surface: linear-gradient(145deg, #fffefa, #f1eef9); --meter-ink: #433d55; --meter-edge: #9184ae; --meter-shadow: #796b97; border-radius: 7px; }
-#network-latency[data-skin="whack-a-mole"] { --meter-surface: linear-gradient(145deg, #fff0d8, #ead0ad); --meter-ink: #4a362b; --meter-edge: #9b7651; --meter-shadow: #735137; border-radius: 11px 11px 7px 7px; }
+#network-latency.is-good { --meter-dot: #34b45b; --meter-tint: #23763f; }
+#network-latency.is-warn { --meter-dot: #f0a126; --meter-tint: #a35a07; }
+#network-latency.is-bad  { --meter-dot: #e04444; --meter-tint: #b8302f; border-color: #e04444; }
 
-@media (max-width: 420px) {
-  #network-latency { min-width: 70px; min-height: 28px; padding: 3px 8px; gap: 4px; }
-  #network-latency .latency-meter__value { min-width: 22px; }
+@keyframes latency-pulse {
+  0% { transform: scale(.6); opacity: .5; }
+  70%, 100% { transform: scale(1.9); opacity: 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  #network-latency.is-good .latency-meter__light::after { animation: none; display: none; }
+}
+
+/* 各遊戲配色：只換底色、文字與框線，外型一致 */
+#network-latency[data-skin="cat-dog-war"] { --meter-surface: #fff4f1; --meter-ink: #533852; --meter-edge: #d990a0; }
+#network-latency[data-skin="caterpillar-race"] { --meter-surface: #f3fadf; --meter-ink: #31532c; --meter-edge: #7ea364; }
+#network-latency[data-skin="chinese-checkers"] { --meter-surface: #fdfcff; --meter-ink: #342f44; --meter-edge: #8b7fa6; }
+#network-latency[data-skin="draw-guess"] { --meter-surface: #fffdf8; --meter-ink: #4a3b55; --meter-edge: #887496; }
+#network-latency[data-skin="flip-match"] { --meter-surface: #eefbf7; --meter-ink: #493e36; --meter-edge: #6e9285; }
+#network-latency[data-skin="fruit-link"] { --meter-surface: #fffaea; --meter-ink: #493e36; --meter-edge: #c49456; }
+#network-latency[data-skin="heart-attack"] { --meter-surface: #fff5ef; --meter-ink: #52384c; --meter-edge: #bb7186; }
+#network-latency[data-skin="richman"] { --meter-surface: #fff8d6; --meter-ink: #68452b; --meter-edge: #aa8244; }
+#network-latency[data-skin="stair-kids"] { --meter-surface: #f5faeb; --meter-ink: #394b35; --meter-edge: #78935f; }
+#network-latency[data-skin="sudoku"] { --meter-surface: #fdfcff; --meter-ink: #433d55; --meter-edge: #9184ae; }
+#network-latency[data-skin="whack-a-mole"] { --meter-surface: #fff3e2; --meter-ink: #4a362b; --meter-edge: #9b7651; }
