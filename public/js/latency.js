@@ -25,8 +25,16 @@
   let probeSequence = 0;
   let boundSocket = null;
   let dockTimer = 0;
-  // 各遊戲右上角的設定鈕；徽章掛在它正下方，不再另外浮在遊戲畫面上
+  let lastLayout = '';
+  // 各遊戲右上角的設定鈕：徽章以它為基準擺放，但絕不疊在它上面
   const anchorSelector = '#b-settings, #btn-gear, #btn-settings, #btn-settings-game, #btn-settings-global, .settings-fab, .gear-btn, .settings-trigger';
+  // 頂端本來就有狀態列的遊戲：直接當成狀態列裡的一顆小標籤，不另外浮在畫面上
+  const inlineHosts = {
+    'chinese-checkers': { host: '#view-game .topbar-left' },
+    'draw-guess': { host: '#s-game .statusbar' },
+    'stair-kids': { host: '#screen-game #side', before: '#side-world' }
+  };
+  const GAP = 6;
 
   function ensureMeter() {
     if (meter) return meter;
@@ -44,15 +52,21 @@
     return meter;
   }
 
+  function isShown(el) {
+    if (!el || el.closest('[hidden]')) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return false;
+    const style = getComputedStyle(el);
+    return style.visibility !== 'hidden' && Number(style.opacity) !== 0;
+  }
+
   function findAnchor() {
     let best = null;
     let bestRect = null;
     document.querySelectorAll(anchorSelector).forEach(function (btn) {
-      if (btn.closest('[hidden]')) return;
+      if (!isShown(btn)) return;
       const r = btn.getBoundingClientRect();
-      if (r.width < 8 || r.height < 8 || r.bottom <= 0 || r.top > 160) return;
-      const style = getComputedStyle(btn);
-      if (style.visibility === 'hidden' || Number(style.opacity) === 0) return;
+      if (r.bottom <= 0 || r.top > 160) return;
       // 有多顆時取最靠右上的那顆
       if (!bestRect || r.right > bestRect.right + 4 || (Math.abs(r.right - bestRect.right) <= 4 && r.top < bestRect.top)) {
         best = btn;
@@ -62,7 +76,7 @@
     return best ? { el: best, rect: bestRect } : null;
   }
 
-  // 沿用設定鈕所在的最外層堆疊層級：徽章疊在設定鈕上，但仍會被彈窗蓋住
+  // 沿用設定鈕所在的最外層堆疊層級：徽章與設定鈕同層，開彈窗時一樣會被蓋住
   function stackLevel(el) {
     let level = null;
     for (let node = el; node && node !== document.body; node = node.parentElement) {
@@ -72,24 +86,110 @@
     return level;
   }
 
-  function dock() {
+  const replaced = /^(IMG|SVG|CANVAS|VIDEO|BUTTON|INPUT|SELECT|TEXTAREA|PROGRESS|METER)$/i;
+  const clearColor = /rgba\(.*,\s*0\)|transparent/;
+  function hasVisibleBorder(style) {
+    return ['Top', 'Right', 'Bottom', 'Left'].some(function (side) {
+      return parseFloat(style['border' + side + 'Width']) > 0 && style['border' + side + 'Style'] !== 'none' &&
+        !clearColor.test(style['border' + side + 'Color']);
+    });
+  }
+  function paints(el, style) {
+    if (replaced.test(el.tagName)) return true;
+    if (!clearColor.test(style.backgroundColor)) return true;
+    if (style.backgroundImage !== 'none' || style.boxShadow !== 'none' || hasVisibleBorder(style)) return true;
+    for (let n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
+    return false;
+  }
+
+  // 候選位置是否空著：有任何看得見的按鈕、文字、卡片、盤面邊框就算佔用；
+  // 鋪滿大片、沒有框線的背景層（畫面底色、整張背景畫布）與淡淡的裝飾不算
+  function isClear(box) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (box.left < 2 || box.top < 2 || box.right > vw - 2 || box.bottom > vh - 2) return false;
+    const big = vw * vh * 0.12;
+    const all = document.body.getElementsByTagName('*');
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
+      if (el === meter || meter.contains(el) || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
+      if (el instanceof SVGElement && el.ownerSVGElement) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.right < box.left - 3 || r.left > box.right + 3 || r.bottom < box.top - 3 || r.top > box.bottom + 3) continue;
+      const style = getComputedStyle(el);
+      // 半透明的裝飾（背景泡泡、光暈）視為背景
+      if (style.visibility === 'hidden' || Number(style.opacity) < 0.5) continue;
+      if (r.width * r.height > big) {
+        // 大片元素只有「邊框剛好落在徽章範圍內」才算撞到（例如盤面外框）
+        if (!hasVisibleBorder(style)) continue;
+        if (r.left < box.left - 3 && r.right > box.right + 3 && r.top < box.top - 3 && r.bottom > box.bottom + 3) continue;
+        return false;
+      }
+      if (paints(el, style)) return false;
+    }
+    return true;
+  }
+
+  function placeAt(x, y) {
+    meter.style.left = Math.round(x) + 'px';
+    meter.style.top = Math.round(y) + 'px';
+  }
+
+  function setInline(host, before) {
+    meter.classList.add('is-inline');
+    meter.classList.remove('is-docked', 'is-compact');
+    meter.style.left = meter.style.top = meter.style.zIndex = '';
+    const ref = before && host.querySelector(before);
+    if (ref ? meter.nextElementSibling !== ref : meter.parentElement !== host) host.insertBefore(meter, ref || null);
+  }
+
+  function dock(force) {
     if (!meter || !active) return;
+    const inline = inlineHosts[skin];
+    const host = inline && document.querySelector(inline.host);
+    if (host && isShown(host)) { lastLayout = 'inline'; setInline(host, inline.before); return; }
+
     const anchor = findAnchor();
-    const style = meter.style;
+    // 設定鈕位置與視窗大小沒變時：已經在最好的位置（左邊）就不動，提示泡泡之類一閃而過的東西不會讓徽章跳走；
+    // 若當初因為被擋住而退到次要位置，則持續檢查，空出來就搬回左邊
+    const r = anchor && anchor.rect;
+    const layout = r ? [r.left, r.top, r.width, r.height, window.innerWidth, window.innerHeight].map(Math.round).join(',') : 'none';
+    if (force !== true && layout === lastLayout && (!anchor || meter.dataset.spot === 'left')) return;
+    lastLayout = layout;
+
+    meter.classList.remove('is-inline');
+    if (meter.parentElement !== document.body) document.body.appendChild(meter);
     if (!anchor) {
-      meter.classList.remove('is-docked');
-      style.left = style.top = style.zIndex = style.minWidth = '';
+      meter.classList.remove('is-docked', 'is-compact');
+      meter.style.left = meter.style.top = meter.style.zIndex = '';
       return;
     }
-    const r = anchor.rect;
     const level = stackLevel(anchor.el);
     meter.classList.add('is-docked');
-    style.zIndex = level === null ? '' : String(level);
-    style.minWidth = Math.round(Math.min(r.width, 64)) + 'px';
-    const w = meter.offsetWidth;
-    const h = meter.offsetHeight;
-    style.left = Math.round(Math.max(4, Math.min(window.innerWidth - w - 4, r.left + r.width / 2 - w / 2))) + 'px';
-    style.top = Math.round(r.bottom - h * 0.4) + 'px';
+    meter.style.zIndex = level === null ? '' : String(level);
+
+    // 依序嘗試：設定鈕左邊同一列 → 設定鈕正下方（留空隙）；都不行就改用不含單位的精簡版再試一次
+    const spots = [
+      function (w, h) { return { left: r.left - GAP - w, top: r.top + (r.height - h) / 2 - 1 }; },
+      function (w, h) { return { left: r.right - w, top: r.bottom + GAP }; }
+    ];
+    for (let pass = 0; pass < 2; pass++) {
+      meter.classList.toggle('is-compact', pass === 1);
+      const w = meter.offsetWidth;
+      const h = meter.offsetHeight;
+      for (let i = 0; i < spots.length; i++) {
+        const p = spots[i](w, h);
+        if (isClear({ left: p.left, top: p.top, right: p.left + w, bottom: p.top + h })) {
+          meter.dataset.spot = (pass ? 'compact-' : '') + (i ? 'below' : 'left');
+          placeAt(p.left, p.top);
+          return;
+        }
+      }
+    }
+    // 真的都滿了：精簡版放在設定鈕正下方，至少不壓住設定鈕
+    meter.dataset.spot = 'fallback';
+    placeAt(r.right - meter.offsetWidth, r.bottom + GAP);
   }
 
   function render() {
@@ -128,6 +228,7 @@
     clearInterval(dockTimer);
     timer = 0;
     dockTimer = 0;
+    lastLayout = '';
     if (!active) {
       value = null;
       render();
@@ -137,7 +238,8 @@
     runProbe();
     timer = setInterval(runProbe, 2500);
     // 設定鈕會隨畫面切換、橫直向改變位置，定時跟上
-    dockTimer = setInterval(dock, 400);
+    dock(true);
+    dockTimer = setInterval(dock, 1000);
   }
 
   function bindSocketIo(socket) {
@@ -157,7 +259,7 @@
     });
   }
 
-  root.addEventListener('resize', dock);
+  root.addEventListener('resize', function () { dock(true); });
 
   root.NetworkLatency = { setActive, setProbe, report, bindSocketIo };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureMeter, { once: true });

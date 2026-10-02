@@ -1,4 +1,5 @@
-/* 連線延遲徽章：由 latency.js 掛在右上角設定鈕正下方（.is-docked），找不到設定鈕時退回右上角 */
+/* 連線延遲徽章：由 latency.js 擺在設定鈕左邊或下方的空位（.is-docked），
+   有頂端狀態列的遊戲則直接放進狀態列（.is-inline）；都不適用時退回右上角 */
 #network-latency {
   --meter-surface: #fffdf8;
   --meter-ink: #4a3b55;
@@ -28,6 +29,17 @@
   transition: border-color .25s ease, background-color .25s ease;
 }
 #network-latency.is-docked { right: auto; }
+#network-latency.is-compact { padding: 0 6px 0 5px; }
+#network-latency.is-compact .latency-meter__unit { display: none; }
+#network-latency.is-inline { position: static; z-index: auto; flex: none; align-self: center; height: 22px; box-shadow: 0 1px 0 #ffffffb3 inset; }
+/* 爬樓梯：橫向是左側資訊欄的一列，直向是上方薄狀態列裡的一顆（省掉單位才塞得下） */
+#side #network-latency.is-inline { align-self: flex-start; }
+@media (orientation: portrait) {
+  #side #network-latency.is-inline { align-self: center; padding: 0 6px 0 5px; }
+  #side #network-latency.is-inline .latency-meter__unit { display: none; }
+  /* 薄狀態列放不下第五樣：世界名稱優先序最低（見 style.css 註解），線上對局顯示延遲時先收起來 */
+  #side:has(> #network-latency.is-inline:not([hidden])) #side-world { display: none; }
+}
 #network-latency[hidden] { display: none; }
 #network-latency .latency-meter__icon { display: none; }
 
@@ -75,7 +87,6 @@
 /* 各遊戲配色：只換底色、文字與框線，外型一致 */
 #network-latency[data-skin="cat-dog-war"] { --meter-surface: #fff4f1; --meter-ink: #533852; --meter-edge: #d990a0; }
 #network-latency[data-skin="caterpillar-race"] { --meter-surface: #f3fadf; --meter-ink: #31532c; --meter-edge: #7ea364; }
-#network-latency[data-skin="chinese-checkers"] { --meter-surface: #fdfcff; --meter-ink: #342f44; --meter-edge: #8b7fa6; }
 #network-latency[data-skin="draw-guess"] { --meter-surface: #fffdf8; --meter-ink: #4a3b55; --meter-edge: #887496; }
 #network-latency[data-skin="flip-match"] { --meter-surface: #eefbf7; --meter-ink: #493e36; --meter-edge: #6e9285; }
 #network-latency[data-skin="fruit-link"] { --meter-surface: #fffaea; --meter-ink: #493e36; --meter-edge: #c49456; }
@@ -84,3 +95,8 @@
 #network-latency[data-skin="stair-kids"] { --meter-surface: #f5faeb; --meter-ink: #394b35; --meter-edge: #78935f; }
 #network-latency[data-skin="sudoku"] { --meter-surface: #fdfcff; --meter-ink: #433d55; --meter-edge: #9184ae; }
 #network-latency[data-skin="whack-a-mole"] { --meter-surface: #fff3e2; --meter-ink: #4a362b; --meter-edge: #9b7651; }
+/* 中國跳棋是深色介面，徽章跟著換成深底亮字 */
+#network-latency[data-skin="chinese-checkers"] { --meter-surface: #18233a; --meter-ink: #dfe6f3; --meter-edge: #3a4f74; --meter-tint: #a3aec2; box-shadow: none; }
+#network-latency[data-skin="chinese-checkers"].is-good { --meter-tint: #6edb92; }
+#network-latency[data-skin="chinese-checkers"].is-warn { --meter-tint: #ffc35c; }
+#network-latency[data-skin="chinese-checkers"].is-bad { --meter-tint: #ff8a8a; }
